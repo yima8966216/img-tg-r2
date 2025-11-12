@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename)
  */
 export class StorageConfig {
   constructor() {
-    this.configFile = path.join(__dirname, '..', 'storage-config.json')
+    this.configFile = path.join(__dirname, '..', 'data', 'storage-config.json')
     this.config = this.loadConfig()
   }
 
@@ -58,6 +58,12 @@ export class StorageConfig {
    */
   saveConfig(newConfig) {
     try {
+      // 确保 data 目录存在
+      const dataDir = path.dirname(this.configFile)
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true })
+      }
+      
       // 合并配置
       this.config = {
         ...this.config,

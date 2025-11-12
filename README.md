@@ -133,9 +133,10 @@ img-tg-r2/
 │   ├── StorageManager.js   # 存储管理器
 │   └── StorageConfig.js    # 存储配置管理
 ├── dist/              # 构建输出 (自动生成)
-├── telegraph-index.json # Telegraph索引文件 (自动生成)
-├── r2-index.json      # R2索引文件 (自动生成)
-├── storage-config.json # 存储配置文件 (自动生成)
+├── data/              # 数据目录 (自动生成)
+│   ├── telegraph-index.json # Telegraph索引文件
+│   ├── r2-index.json      # R2索引文件
+│   └── storage-config.json # 存储配置文件
 ├── STORAGE_CONFIG.md  # 存储配置说明
 └── README.md          # 项目说明
 ```

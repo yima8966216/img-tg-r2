@@ -1,6 +1,6 @@
 services:
   img-tg-r2:
-    build: .
+    image: ghcr.io/xia-66/img-tg-r2:latest
     container_name: img-tg-r2
     restart: unless-stopped
     ports:
@@ -27,10 +27,8 @@ services:
       # Node 环境
       - NODE_ENV=production
     volumes:
-      # 持久化索引文件
-      - ./telegraph-index.json:/app/telegraph-index.json
-      - ./r2-index.json:/app/r2-index.json
-      - ./storage-config.json:/app/storage-config.json
+      # 持久化数据目录（包含索引文件和配置文件）
+      - ./data:/app/data
     networks:
       - img-tg-r2-network
     healthcheck:

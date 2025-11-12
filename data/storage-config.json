@@ -1,0 +1,16 @@
+{
+  "defaultStorage": "telegraph",
+  "telegraph": {
+    "enabled": false,
+    "botToken": "",
+    "chatId": ""
+  },
+  "r2": {
+    "enabled": false,
+    "accountId": "afds",
+    "accessKeyId": "ssafs",
+    "secretAccessKey": "fssf",
+    "bucketName": "asfds",
+    "publicDomain": ""
+  }
+}

@@ -24,7 +24,7 @@ export class R2Storage extends BaseStorage {
     this.bucketName = config.bucketName
     this.publicDomain = config.publicDomain || null // 自定义域名（可选）
     this.baseUrl = config.baseUrl || 'http://localhost:33000' // 服务器基础 URL
-    this.indexFile = path.join(__dirname, '..', 'r2-index.json')
+    this.indexFile = path.join(__dirname, '..', 'data', 'r2-index.json')
     
     // 创建 S3 客户端（R2 兼容 S3 API）
     this.s3Client = new S3Client({
@@ -44,6 +44,13 @@ export class R2Storage extends BaseStorage {
    * 确保索引文件存在
    */
   _ensureIndexFile() {
+    // 确保 data 目录存在
+    const dataDir = path.dirname(this.indexFile)
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    
+    // 确保索引文件存在
     if (!fs.existsSync(this.indexFile)) {
       fs.writeFileSync(this.indexFile, JSON.stringify([], null, 2), 'utf8')
     }

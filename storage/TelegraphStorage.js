@@ -18,7 +18,7 @@ export class TelegraphStorage extends BaseStorage {
     this.botToken = config.botToken || process.env.TG_BOT_TOKEN
     this.chatId = config.chatId || process.env.TG_CHAT_ID
     this.baseUrl = config.baseUrl || '' // 服务器 URL，用于生成代理链接
-    this.indexFile = path.join(__dirname, '..', 'telegraph-index.json')
+    this.indexFile = path.join(__dirname, '..', 'data', 'telegraph-index.json')
     
     if (!this.botToken) {
       console.warn('⚠️  Telegraph 存储需要配置 TG_BOT_TOKEN 环境变量')
@@ -35,6 +35,13 @@ export class TelegraphStorage extends BaseStorage {
    * 确保索引文件存在
    */
   _ensureIndexFile() {
+    // 确保 data 目录存在
+    const dataDir = path.dirname(this.indexFile)
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    
+    // 确保索引文件存在
     if (!fs.existsSync(this.indexFile)) {
       fs.writeFileSync(this.indexFile, JSON.stringify([], null, 2), 'utf8')
     }

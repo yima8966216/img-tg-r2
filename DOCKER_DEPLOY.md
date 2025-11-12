@@ -175,10 +175,10 @@ docker-compose up -d
 
 ```yaml
 volumes:
-  - ./telegraph-index.json:/app/telegraph-index.json
-  - ./r2-index.json:/app/r2-index.json
-  - ./storage-config.json:/app/storage-config.json
+  - ./data:/app/data
 ```
+
+所有数据文件（索引和配置）都存储在 `data` 目录中，容器会自动创建该目录和文件。
 
 ## 📊 监控和维护
 
@@ -195,19 +195,25 @@ docker inspect img-tg-r2
 ### 备份数据
 
 ```bash
-# 备份索引文件
-cp telegraph-index.json telegraph-index.json.bak
-cp r2-index.json r2-index.json.bak
-cp storage-config.json storage-config.json.bak
+# 备份整个 data 目录
+cp -r data data-backup-$(date +%Y%m%d)
+
+# 或单独备份文件
+cp data/telegraph-index.json data/telegraph-index.json.bak
+cp data/r2-index.json data/r2-index.json.bak
+cp data/storage-config.json data/storage-config.json.bak
 ```
 
 ### 恢复数据
 
 ```bash
-# 恢复索引文件
-cp telegraph-index.json.bak telegraph-index.json
-cp r2-index.json.bak r2-index.json
-cp storage-config.json.bak storage-config.json
+# 恢复整个 data 目录
+cp -r data-backup-YYYYMMDD data
+
+# 或单独恢复文件
+cp data/telegraph-index.json.bak data/telegraph-index.json
+cp data/r2-index.json.bak data/r2-index.json
+cp data/storage-config.json.bak data/storage-config.json
 
 # 重启服务
 docker-compose restart
