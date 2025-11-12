@@ -8,6 +8,16 @@
         </div>
       </template>
 
+      <!-- 存储方式选择 -->
+      <div class="storage-selector">
+        <el-text class="storage-label">存储方式：</el-text>
+        <el-radio-group v-model="selectedStorage" size="small">
+          <el-radio-button v-for="storage in availableStorages" :key="storage.value" :value="storage.value">
+            {{ storage.label }}
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+
       <!-- 拖拽上传区域 -->
       <div class="upload-area" :class="{ 'is-dragover': isDragover }" @dragover.prevent="handleDragOver" @dragleave.prevent="handleDragLeave" @drop.prevent="handleDrop" @click="selectFiles">
         <div class="upload-content">
@@ -39,12 +49,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Upload, UploadFilled, FolderOpened } from '@element-plus/icons-vue'
 import { imageAPI } from '../utils/api'
 
-const emit = defineEmits(['uploaded'])
+const emit = defineEmits(['uploaded', 'storageChanged'])
 
 const fileInput = ref()
 const isDragover = ref(false)
@@ -52,6 +62,46 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref('')
 const progressText = ref('')
+const selectedStorage = ref('local')
+const availableStorages = ref([
+  { value: 'local', label: '本地存储' }
+])
+
+// 获取可用的存储服务
+const fetchAvailableStorages = async () => {
+  try {
+    const response = await imageAPI.getAvailableStorages()
+    if (response.success && response.data.storages) {
+      const storageMap = {
+        'local': '本地存储',
+        'telegraph': 'Telegraph',
+        'r2': 'Cloudflare R2'
+      }
+      
+      availableStorages.value = response.data.storages.map(storage => ({
+        value: storage,
+        label: storageMap[storage] || storage
+      }))
+      
+      // 设置默认存储
+      if (response.data.default) {
+        selectedStorage.value = response.data.default
+      }
+    }
+  } catch (error) {
+    console.error('获取存储服务列表失败:', error)
+  }
+}
+
+// 监听存储方式变化
+const handleStorageChange = () => {
+  emit('storageChanged', selectedStorage.value)
+}
+
+// 组件挂载时获取可用存储服务
+onMounted(() => {
+  fetchAvailableStorages()
+})
 
 // 选择文件
 const selectFiles = () => {
@@ -115,7 +165,7 @@ const uploadFiles = async files => {
 
       progressText.value = `正在上传: ${file.name}`
 
-      const response = await imageAPI.uploadImage(file)
+      const response = await imageAPI.uploadImage(file, selectedStorage.value)
 
       if (response.success) {
         successCount++
@@ -159,6 +209,22 @@ const uploadFiles = async files => {
 .upload-card {
   max-width: 600px;
   margin: 0 auto;
+}
+
+.storage-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.storage-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
 }
 
 .card-header {

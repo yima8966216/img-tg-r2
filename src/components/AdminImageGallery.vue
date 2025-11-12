@@ -7,8 +7,15 @@
             <el-icon size="20"><PictureRounded /></el-icon>
             <span>图片管理</span>
             <el-tag v-if="images.length > 0" type="info" size="small"> {{ images.length }} 张 </el-tag>
+            <el-tag :type="getStorageTagType(selectedStorage)" size="small">
+              当前: {{ getStorageLabel(selectedStorage) }}
+            </el-tag>
           </div>
           <div class="header-right">
+            <el-select v-model="selectedStorage" @change="handleStorageChange" size="small" style="width: 140px; margin-right: 10px" placeholder="选择存储">
+              <el-option label="Telegraph" value="telegraph" />
+              <el-option label="Cloudflare R2" value="r2" />
+            </el-select>
             <el-button-group>
               <el-button :icon="Refresh" @click="loadImages" :loading="loading" size="small"> 刷新 </el-button>
               <el-button :icon="View" @click="toggleViewMode" size="small" :type="viewMode === 'grid' ? 'primary' : 'default'">
@@ -58,12 +65,13 @@
 
       <!-- 空状态 -->
       <div v-else-if="!loading && images.length === 0" class="empty-state">
-        <el-empty image-size="120" description="还没有上传任何图片">
+        <el-empty image-size="120" :description="`当前存储(${getStorageLabel(selectedStorage)})还没有图片`">
           <template #image>
             <el-icon size="120" color="#c0c4cc">
               <PictureRounded />
             </el-icon>
           </template>
+          <el-text type="info">提示：不同存储方式的图片需要切换到对应的存储查看</el-text>
         </el-empty>
       </div>
 
@@ -97,6 +105,9 @@
             <div class="image-info">
               <div class="image-filename" :title="image.filename">
                 {{ truncateFilename(image.filename) }}
+                <el-tag v-if="image.storageType" :type="getStorageTagType(image.storageType)" size="small" style="margin-left: 5px">
+                  {{ getStorageLabel(image.storageType) }}
+                </el-tag>
               </div>
               <div class="image-meta">
                 <span class="file-size">{{ formatFileSize(image.size) }}</span>
@@ -121,6 +132,9 @@
               <el-link @click="previewImage(row)" :underline="false">
                 {{ row.filename }}
               </el-link>
+              <el-tag v-if="row.storageType" :type="getStorageTagType(row.storageType)" size="small" style="margin-left: 8px">
+                {{ getStorageLabel(row.storageType) }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="size" label="大小" width="100">
@@ -218,6 +232,7 @@ import { imageAPI, adminAPI } from '../utils/api'
 const emit = defineEmits(['stats-updated'])
 
 const images = ref([])
+const selectedStorage = ref('telegraph')
 const loading = ref(false)
 const previewVisible = ref(false)
 const currentImage = ref(null)
@@ -270,16 +285,41 @@ const filteredImages = computed(() => {
 const loadImages = async () => {
   loading.value = true
   try {
-    const response = await imageAPI.getImages()
+    const response = await imageAPI.getImages(selectedStorage.value)
     if (response.success) {
       images.value = response.data
       selectedImages.value = []
     }
   } catch (error) {
     console.error('加载图片列表失败:', error)
+    ElMessage.error('加载图片列表失败')
   } finally {
     loading.value = false
   }
+}
+
+// 处理存储切换
+const handleStorageChange = () => {
+  selectedImages.value = []
+  loadImages()
+}
+
+// 获取存储类型标签样式
+const getStorageTagType = (storageType) => {
+  const typeMap = {
+    'telegraph': 'success',
+    'r2': 'warning'
+  }
+  return typeMap[storageType] || ''
+}
+
+// 获取存储类型标签文本
+const getStorageLabel = (storageType) => {
+  const labelMap = {
+    'telegraph': 'TG',
+    'r2': 'R2'
+  }
+  return labelMap[storageType] || storageType
 }
 
 // 切换视图模式
@@ -382,7 +422,7 @@ const downloadImage = image => {
 // 删除单张图片
 const deleteImage = async filename => {
   try {
-    const response = await adminAPI.deleteImage(filename)
+    const response = await adminAPI.deleteImage(filename, selectedStorage.value)
     if (response.success) {
       ElMessage.success('图片删除成功')
       loadImages()
@@ -404,7 +444,9 @@ const deleteImage = async filename => {
 const deleteSelectedImages = async () => {
   if (selectedImages.value.length === 0) return
 
-  const deletePromises = selectedImages.value.map(filename => adminAPI.deleteImage(filename))
+  const deletePromises = selectedImages.value.map(filename => 
+    adminAPI.deleteImage(filename, selectedStorage.value)
+  )
 
   try {
     await Promise.all(deletePromises)

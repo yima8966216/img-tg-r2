@@ -7,8 +7,15 @@
             <el-icon size="20"><PictureRounded /></el-icon>
             <span>图片列表</span>
             <el-tag v-if="images.length > 0" type="info" size="small"> {{ images.length }} 张 </el-tag>
+            <el-tag :type="getStorageTagType(selectedStorage)" size="small">
+              当前: {{ getStorageLabel(selectedStorage) }}
+            </el-tag>
           </div>
           <div class="header-right">
+            <el-select v-model="selectedStorage" @change="loadImages" size="small" style="width: 140px; margin-right: 10px" placeholder="选择存储">
+              <el-option label="Telegraph" value="telegraph" />
+              <el-option label="Cloudflare R2" value="r2" />
+            </el-select>
             <el-button :icon="Refresh" @click="loadImages" :loading="loading" size="small"> 刷新 </el-button>
           </div>
         </div>
@@ -22,13 +29,14 @@
 
       <!-- 空状态 -->
       <div v-else-if="!loading && images.length === 0" class="empty-state">
-        <el-empty image-size="120" description="还没有上传任何图片">
+        <el-empty image-size="120" :description="`当前存储(${getStorageLabel(selectedStorage)})还没有图片`">
           <template #image>
             <el-icon size="120" color="#c0c4cc">
               <PictureRounded />
             </el-icon>
           </template>
           <el-button type="primary" @click="$emit('upload-click')"> 开始上传 </el-button>
+          <el-text type="info" style="margin-top: 10px">提示：不同存储方式的图片需要切换到对应的存储查看</el-text>
         </el-empty>
       </div>
 
@@ -52,6 +60,9 @@
           <div class="image-info">
             <div class="image-filename" :title="image.filename">
               {{ truncateFilename(image.filename) }}
+              <el-tag v-if="image.storageType" :type="getStorageTagType(image.storageType)" size="small" style="margin-left: 5px">
+                {{ getStorageLabel(image.storageType) }}
+              </el-tag>
             </div>
             <div class="image-meta">
               <span class="file-size">{{ formatFileSize(image.size) }}</span>
@@ -128,20 +139,40 @@ const images = ref([])
 const loading = ref(false)
 const previewVisible = ref(false)
 const currentImage = ref(null)
+const selectedStorage = ref('telegraph')
 
 // 加载图片列表
 const loadImages = async () => {
   loading.value = true
   try {
-    const response = await imageAPI.getImages()
+    const response = await imageAPI.getImages(selectedStorage.value)
     if (response.success) {
       images.value = response.data
     }
   } catch (error) {
     console.error('加载图片列表失败:', error)
+    ElMessage.error('加载图片列表失败')
   } finally {
     loading.value = false
   }
+}
+
+// 获取存储类型标签样式
+const getStorageTagType = (storageType) => {
+  const typeMap = {
+    'telegraph': 'success',
+    'r2': 'warning'
+  }
+  return typeMap[storageType] || ''
+}
+
+// 获取存储类型标签文本
+const getStorageLabel = (storageType) => {
+  const labelMap = {
+    'telegraph': 'TG',
+    'r2': 'R2'
+  }
+  return labelMap[storageType] || storageType
 }
 
 // 预览图片
@@ -213,7 +244,7 @@ const downloadImage = image => {
 // 删除图片
 const deleteImage = async filename => {
   try {
-    const response = await imageAPI.deleteImage(filename)
+    const response = await imageAPI.deleteImage(filename, selectedStorage.value)
     if (response.success) {
       ElMessage.success('图片删除成功')
       loadImages()
@@ -221,6 +252,7 @@ const deleteImage = async filename => {
     }
   } catch (error) {
     console.error('删除图片失败:', error)
+    ElMessage.error('删除图片失败')
   }
 }
 

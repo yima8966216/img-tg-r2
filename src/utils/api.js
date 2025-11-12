@@ -43,9 +43,10 @@ api.interceptors.response.use(
 // API方法
 export const imageAPI = {
   // 上传图片
-  uploadImage(file) {
+  uploadImage(file, storageType = 'local') {
     const formData = new FormData()
     formData.append('image', file)
+    formData.append('storageType', storageType)
     return api.post('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
@@ -54,13 +55,22 @@ export const imageAPI = {
   },
 
   // 获取图片列表
-  getImages() {
-    return api.get('/images')
+  getImages(storageType = 'local') {
+    return api.get('/images', {
+      params: { storageType }
+    })
   },
 
   // 删除图片
-  deleteImage(filename) {
-    return api.delete(`/images/${filename}`)
+  deleteImage(filename, storageType = 'local') {
+    return api.delete(`/images/${filename}`, {
+      params: { storageType }
+    })
+  },
+
+  // 获取可用的存储服务列表
+  getAvailableStorages() {
+    return api.get('/storage/available')
   }
 }
 
@@ -81,13 +91,50 @@ export const adminAPI = {
   },
 
   // 管理员删除图片
-  deleteImage(filename) {
-    return api.delete(`/admin/images/${filename}`)
+  deleteImage(filename, storageType = 'local') {
+    return api.delete(`/admin/images/${filename}`, {
+      params: { storageType }
+    })
   },
 
   // 清空所有图片
   clearAllImages() {
     return api.delete('/admin/images')
+  },
+
+  // 获取存储配置
+  getStorageConfig() {
+    return api.get('/admin/storage/config')
+  },
+
+  // 获取完整存储配置（包含敏感信息）
+  getFullStorageConfig() {
+    return api.get('/admin/storage/config/full')
+  },
+  
+  // 别名方法
+  getStorageConfigFull() {
+    return this.getFullStorageConfig()
+  },
+
+  // 更新存储配置
+  updateStorageConfig(storageType, config) {
+    return api.post('/admin/storage/config', { storageType, config })
+  },
+
+  // 设置默认存储
+  setDefaultStorage(storageType) {
+    return api.post('/admin/storage/default', { storageType })
+  },
+
+  // 测试存储连接
+  testStorage(storageType) {
+    return api.post('/admin/storage/test', { storageType })
+  },
+  
+  // 测试存储连接（带配置）
+  testStorageConnection(storageType, config) {
+    return api.post('/admin/storage/test', { storageType, config })
   }
 }
 

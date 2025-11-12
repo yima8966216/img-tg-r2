@@ -1,0 +1,20 @@
+{
+  "defaultStorage": "telegraph",
+  "local": {
+    "enabled": true,
+    "maxFileSize": 10485760
+  },
+  "telegraph": {
+    "enabled": true,
+    "botToken": "8549823460:AAFGvbZ00j662M_yvzXWndpD5ImHDKBIEt4",
+    "chatId": "-1003321217520"
+  },
+  "r2": {
+    "enabled": true,
+    "accountId": "bc1fd7fbb26dfd2cc6b342193feae2d4",
+    "accessKeyId": "bfac3a48a7549eecee9f6c66109e5115",
+    "secretAccessKey": "affa9da8bae1d4bbd41c9c45f366d4be8bafd7ca3ba45b21577dcf85ff6eff30",
+    "bucketName": "img",
+    "publicDomain": ""
+  }
+}

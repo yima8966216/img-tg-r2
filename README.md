@@ -14,6 +14,9 @@
 - ⚡ **高性能** - Vue 3 Composition API + Vite 构建
 - 🐳 **Docker 支持** - 一键部署，支持公网/本地环境自动检测
 - 🌐 **智能 URL** - 自动检测公网 IP 或使用自定义域名
+- ☁️ **云端存储** - Telegraph (Telegram Bot)、Cloudflare R2 云存储
+- 🔄 **灵活切换** - 上传时可自由选择存储方式
+- 🔗 **短链接** - 所有图片都使用短链接格式，简洁美观
 
 ## 🛠️ 技术栈
 
@@ -24,6 +27,8 @@
 - JWT (身份认证)
 - bcryptjs (密码加密)
 - CORS (跨域支持)
+- Sharp (图片处理)
+- AWS SDK (Cloudflare R2)
 
 **前端:**
 
@@ -121,19 +126,47 @@ vue-image-host/
 │   │   └── AdminImageGallery.vue # 管理员图片管理
 │   └── utils/         # 工具函数
 │       └── api.js     # API 接口
+├── storage/           # 存储服务
+│   ├── BaseStorage.js      # 存储基类
+│   ├── TelegraphStorage.js # Telegraph云存储
+│   ├── R2Storage.js        # Cloudflare R2云存储
+│   ├── StorageManager.js   # 存储管理器
+│   └── StorageConfig.js    # 存储配置管理
 ├── dist/              # 构建输出 (自动生成)
-├── uploads/           # 图片上传目录 (自动创建)
+├── telegraph-index.json # Telegraph索引文件 (自动生成)
+├── r2-index.json      # R2索引文件 (自动生成)
+├── storage-config.json # 存储配置文件 (自动生成)
+├── STORAGE_CONFIG.md  # 存储配置说明
 └── README.md          # 项目说明
 ```
 
 ## 🖼️ 使用说明
 
+### 存储方式选择
+
+支持两种云存储方式，可在上传时自由切换：
+
+1. **Telegraph (默认)** - 使用 Telegram Bot API 云存储
+   - ✅ 完全免费
+   - ✅ 无容量限制
+   - ✅ 短链接格式：`/tg/shortId.ext`
+   - ⚠️ 需要配置 Telegram Bot
+
+2. **Cloudflare R2** - 企业级对象存储
+   - ✅ 高速稳定
+   - ✅ 免费额度充足（10GB/月）
+   - ✅ 短链接格式：`/r2/shortId.ext`
+   - ⚠️ 需要 Cloudflare 账号
+
+详细配置请查看 [存储配置文档](STORAGE_CONFIG.md)
+
 ### 上传图片
 
-1. **拖拽上传**: 直接将图片拖拽到虚线区域
-2. **点击上传**: 点击"选择图片"按钮选择文件
-3. **批量上传**: 支持同时选择多张图片
-4. **最近上传**: 首页显示当前会话的最近上传记录
+1. **选择存储方式**: 在上传区域顶部选择存储方式
+2. **拖拽上传**: 直接将图片拖拽到虚线区域
+3. **点击上传**: 点击"选择图片"按钮选择文件
+4. **批量上传**: 支持同时选择多张图片
+5. **最近上传**: 首页显示当前会话的最近上传记录
 
 ### 图片管理
 
@@ -161,10 +194,27 @@ vue-image-host/
 
 ### 文件限制
 
-- 单个文件最大: 10MB
+- **Telegraph**: 单个文件最大 20MB (Telegram 限制)
+- **R2**: 单个文件最大 5GB (R2 限制)
 - 支持批量上传
+- 自动生成缩略图
 
 ## ⚙️ API 接口
+
+### 获取可用存储服务
+
+```http
+GET /api/storage/available
+
+响应:
+{
+  "success": true,
+  "data": {
+    "storages": ["telegraph", "r2"],
+    "default": "telegraph"
+  }
+}
+```
 
 ### 上传图片
 
@@ -174,6 +224,7 @@ Content-Type: multipart/form-data
 
 参数:
 - image: 图片文件
+- storageType: 存储类型 (telegraph/r2，可选，默认 telegraph)
 
 响应:
 {
@@ -183,7 +234,9 @@ Content-Type: multipart/form-data
     "filename": "1234567890_123456789.jpg",
     "originalName": "photo.jpg",
     "size": 1024000,
-    "url": "http://127.0.0.1:3000/uploads/1234567890_123456789.jpg",
+    "url": "http://127.0.0.1:33000/tg/Ab12Cd34.jpg",
+    "thumbnailUrl": "http://127.0.0.1:33000/tg/Ab12Cd34.jpg",
+    "storageType": "telegraph",
     "uploadTime": "2024-01-01 12:00:00"
   }
 }
@@ -192,7 +245,10 @@ Content-Type: multipart/form-data
 ### 获取图片列表
 
 ```http
-GET /api/images
+GET /api/images?storageType=telegraph
+
+参数:
+- storageType: 存储类型 (telegraph/r2，可选，默认 telegraph)
 
 响应:
 {
@@ -200,9 +256,11 @@ GET /api/images
   "data": [
     {
       "filename": "1234567890_123456789.jpg",
-      "url": "http://127.0.0.1:3000/uploads/1234567890_123456789.jpg",
+      "url": "http://127.0.0.1:33000/tg/Ab12Cd34.jpg",
+      "thumbnailUrl": "http://127.0.0.1:33000/tg/Ab12Cd34.jpg",
       "size": 1024000,
-      "uploadTime": "2024-01-01 12:00:00"
+      "uploadTime": "2024/01/01 12:00:00",
+      "storageType": "telegraph"
     }
   ]
 }
@@ -211,7 +269,10 @@ GET /api/images
 ### 删除图片
 
 ```http
-DELETE /api/images/:filename
+DELETE /api/images/:filename?storageType=telegraph
+
+参数:
+- storageType: 存储类型 (telegraph/r2，可选，默认 telegraph)
 
 响应:
 {
@@ -220,20 +281,60 @@ DELETE /api/images/:filename
 }
 ```
 
+### 访问图片（短链接）
+
+**Telegraph 图片：**
+```http
+GET /tg/:shortId
+
+示例: http://127.0.0.1:33000/tg/Ab12Cd34.jpg
+```
+
+**R2 图片：**
+```http
+GET /r2/:shortId
+
+示例: http://127.0.0.1:33000/r2/Xy98Zw76.jpg
+```
+
+特点：
+- ✅ 8位随机短ID，简洁美观
+- ✅ 通过服务器代理，不暴露真实存储地址
+- ✅ 自动设置缓存头，提升访问速度
+- ✅ 支持直接在浏览器访问
+
 ## 🔧 配置选项
 
 ### 环境变量配置
 
-只需配置以下必要的环境变量（在 `docker-compose.yml` 中）：
+基础配置（在 `docker-compose.yml` 或 `.env` 中）：
 
 ```bash
 # 管理员账号配置（必需）
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin123
 
-# 文件上传配置（可选，默认10MB）
-MAX_FILE_SIZE=10485760
+# 默认存储方式（可选，默认为 telegraph）
+DEFAULT_STORAGE=telegraph  # 可选: telegraph, r2
+
+# Telegraph 配置（使用 Telegraph 时需要）
+TG_BOT_TOKEN=your_telegram_bot_token
+TG_CHAT_ID=@your_channel_name  # 或 -1001234567890
+
+# Cloudflare R2 配置（使用 R2 时需要）
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key_id
+R2_SECRET_ACCESS_KEY=your_secret_access_key
+R2_BUCKET_NAME=your_bucket_name
+R2_PUBLIC_DOMAIN=  # 可选，留空使用服务器代理
 ```
+
+**重要提示：**
+- ✅ 所有图片通过服务器代理访问，不暴露真实存储地址
+- ✅ R2 无需配置公共访问，更安全
+- ✅ 支持短链接格式，简洁美观
+
+详细配置说明请查看 [存储配置文档](STORAGE_CONFIG.md)
 
 ### 自动配置机制
 
@@ -241,19 +342,24 @@ MAX_FILE_SIZE=10485760
 
 1. **端口**: 固定为 `33000`
 2. **JWT 密钥**: 启动时自动生成随机密钥（64 字节）
-3. **上传目录**: 固定为 `uploads` 目录
-4. **图片 URL**: 根据请求动态生成，自动适配访问地址
-5. **NODE_ENV**: 在 Dockerfile 中已设置为 `production`
+3. **图片 URL**: 根据请求动态生成，自动适配访问地址
+4. **NODE_ENV**: 在 Dockerfile 中已设置为 `production`
+5. **短链接**: 自动生成8位随机ID
 
 ### URL 生成规则
 
-图片 URL 会根据实际访问地址动态生成：
+图片使用短链接格式，会根据实际访问地址动态生成：
 
-- 访问 `http://localhost:33000` → 图片 URL 为 `http://localhost:33000/uploads/xxx.jpg`
-- 访问 `http://192.168.1.100:33000` → 图片 URL 为 `http://192.168.1.100:33000/uploads/xxx.jpg`
-- 访问 `http://example.com:33000` → 图片 URL 为 `http://example.com:33000/uploads/xxx.jpg`
+**Telegraph 存储：**
+- 访问 `http://localhost:33000` → 图片 URL 为 `http://localhost:33000/tg/Ab12Cd34.jpg`
+- 访问 `http://your-domain.com` → 图片 URL 为 `http://your-domain.com/tg/Ab12Cd34.jpg`
 
-无需手动配置 `APP_URL`，系统会自动识别。
+**R2 存储：**
+- 访问 `http://localhost:33000` → 图片 URL 为 `http://localhost:33000/r2/Xy98Zw76.jpg`
+- 访问 `http://your-domain.com` → 图片 URL 为 `http://your-domain.com/r2/Xy98Zw76.jpg`
+
+✅ 无需手动配置 `APP_URL`，系统会自动识别
+✅ 短链接格式简洁美观，不暴露真实存储地址
 
 ## 🚀 部署建议
 
