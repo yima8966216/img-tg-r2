@@ -29,8 +29,10 @@ RUN npm install vite @vitejs/plugin-vue unplugin-auto-import unplugin-vue-compon
     npm run build && \
     npm uninstall vite @vitejs/plugin-vue unplugin-auto-import unplugin-vue-components
 
-# 清理不必要的文件
-RUN rm -rf src public node_modules/.cache
+# 清理不必要的文件和敏感数据
+RUN rm -rf src public node_modules/.cache && \
+    rm -rf data/*.json && \
+    mkdir -p /app/data
 
 # 暴露端口
 EXPOSE 33000

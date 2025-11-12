@@ -40,9 +40,11 @@ docker run -d \
   -e ADMIN_PASSWORD=your_password \
   -e TG_BOT_TOKEN=your_token \
   -e TG_CHAT_ID=@your_channel \
-  -v $(pwd)/telegraph-index.json:/app/telegraph-index.json \
-  -v $(pwd)/r2-index.json:/app/r2-index.json \
-  -v $(pwd)/storage-config.json:/app/storage-config.json \
+  -e R2_ACCOUNT_ID=your_account_id \
+  -e R2_ACCESS_KEY_ID=your_access_key \
+  -e R2_SECRET_ACCESS_KEY=your_secret \
+  -e R2_BUCKET_NAME=your_bucket \
+  -v $(pwd)/data:/app/data \
   img-tg-r2:latest
 
 # 查看日志
@@ -289,9 +291,11 @@ deploy:
 
 1. ✅ 使用强密码
 2. ✅ 不要将 `.env` 文件提交到 Git
-3. ✅ 定期备份索引文件
-4. ✅ 配置 HTTPS（使用 Nginx/Caddy）
-5. ✅ 限制容器资源使用
+3. ✅ **不要将 `data` 目录提交到 Git（包含敏感配置）**
+4. ✅ **镜像构建时会自动清除所有配置文件，确保敏感信息不会被打包**
+5. ✅ 定期备份索引文件
+6. ✅ 配置 HTTPS（使用 Nginx/Caddy）
+7. ✅ 限制容器资源使用
 
 ## 📝 常见问题
 
