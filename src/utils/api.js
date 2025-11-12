@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000
+  timeout: 30000  // 增加超时时间到30秒，避免某些请求超时
 })
 
 // 请求拦截器
@@ -43,7 +43,7 @@ api.interceptors.response.use(
 // API方法
 export const imageAPI = {
   // 上传图片
-  uploadImage(file, storageType = 'local') {
+  uploadImage(file, storageType = 'telegraph') {
     const formData = new FormData()
     formData.append('image', file)
     formData.append('storageType', storageType)
@@ -55,14 +55,14 @@ export const imageAPI = {
   },
 
   // 获取图片列表
-  getImages(storageType = 'local') {
+  getImages(storageType = 'telegraph') {
     return api.get('/images', {
       params: { storageType }
     })
   },
 
   // 删除图片
-  deleteImage(filename, storageType = 'local') {
+  deleteImage(filename, storageType = 'telegraph') {
     return api.delete(`/images/${filename}`, {
       params: { storageType }
     })
@@ -91,7 +91,7 @@ export const adminAPI = {
   },
 
   // 管理员删除图片
-  deleteImage(filename, storageType = 'local') {
+  deleteImage(filename, storageType = 'telegraph') {
     return api.delete(`/admin/images/${filename}`, {
       params: { storageType }
     })

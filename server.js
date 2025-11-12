@@ -36,10 +36,19 @@ const sendError = (res, statusCode, message) => {
   })
 }
 
-// 生成基础URL（根据请求动态获取）
+// 生成基础URL（根据请求动态获取，支持反向代理）
 function getBaseUrl(req) {
   // 如果有请求对象，从请求头中获取实际访问的URL
   if (req) {
+    // 优先使用反向代理传递的头信息
+    const forwardedProto = req.get('x-forwarded-proto')
+    const forwardedHost = req.get('x-forwarded-host')
+    
+    if (forwardedProto && forwardedHost) {
+      return `${forwardedProto}://${forwardedHost}`
+    }
+    
+    // 回退到标准的 protocol 和 host
     const protocol = req.protocol || 'http'
     const host = req.get('host')
     if (host) {
@@ -93,9 +102,12 @@ async function initStorageManager(req) {
       publicDomain: config.r2?.publicDomain || process.env.R2_PUBLIC_DOMAIN,
       baseUrl: baseUrl
     },
-    defaultStorage: config.defaultStorage || process.env.DEFAULT_STORAGE || 'local'
+    defaultStorage: config.defaultStorage || process.env.DEFAULT_STORAGE || 'telegraph'
   })
 }
+
+// 信任反向代理（用于正确获取客户端真实IP和协议）
+app.set('trust proxy', true)
 
 // 中间件
 app.use(cors())
@@ -263,7 +275,7 @@ app.get('/api/storage/available', async (req, res) => {
       success: true,
       data: {
         storages: availableStorages,
-        default: config.defaultStorage || 'local'
+        default: config.defaultStorage || 'telegraph'
       }
     })
   } catch (error) {
@@ -522,15 +534,29 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     const storage = storageManager.getStorage(storageType)
     const result = await storage.upload(req.file.buffer, filename, req.file.mimetype)
 
+    // 使用当前请求的baseUrl重新生成URL（修复Docker中的地址问题）
+    const currentBaseUrl = getBaseUrl(req)
+    const responseData = {
+      ...result,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      uploadTime: new Date().toLocaleString('zh-CN')
+    }
+    
+    // 重写URL为当前请求的baseUrl
+    if (result.url) {
+      const urlPath = result.url.replace(/^https?:\/\/[^/]+/, '')
+      responseData.url = `${currentBaseUrl}${urlPath}`
+    }
+    if (result.thumbnailUrl) {
+      const thumbPath = result.thumbnailUrl.replace(/^https?:\/\/[^/]+/, '')
+      responseData.thumbnailUrl = `${currentBaseUrl}${thumbPath}`
+    }
+
     res.json({
       success: true,
       message: '图片上传成功',
-      data: {
-        ...result,
-        originalName: req.file.originalname,
-        size: req.file.size,
-        uploadTime: new Date().toLocaleString('zh-CN')
-      }
+      data: responseData
     })
   } catch (error) {
     console.error('上传错误:', error)
@@ -662,9 +688,24 @@ app.get('/api/images', async (req, res) => {
     const storage = storageManager.getStorage(storageType)
     const images = await storage.list()
 
+    // 使用当前请求的baseUrl重新生成URL（修复Docker中的地址问题）
+    const currentBaseUrl = getBaseUrl(req)
+    const imagesWithCorrectUrl = images.map(image => {
+      const updatedImage = { ...image }
+      if (image.url) {
+        const urlPath = image.url.replace(/^https?:\/\/[^/]+/, '')
+        updatedImage.url = `${currentBaseUrl}${urlPath}`
+      }
+      if (image.thumbnailUrl) {
+        const thumbPath = image.thumbnailUrl.replace(/^https?:\/\/[^/]+/, '')
+        updatedImage.thumbnailUrl = `${currentBaseUrl}${thumbPath}`
+      }
+      return updatedImage
+    })
+
     res.json({
       success: true,
-      data: images
+      data: imagesWithCorrectUrl
     })
   } catch (error) {
     console.error('获取图片列表错误:', error)

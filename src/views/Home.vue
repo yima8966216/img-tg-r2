@@ -209,11 +209,12 @@ const clearRecent = () => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .content-container {
-    padding: 20px 10px;
+    padding: 15px;
+    max-width: 100%;
   }
 
   .page-title {
-    margin-bottom: 30px;
+    margin-bottom: 20px;
   }
 
   .title {
@@ -221,18 +222,37 @@ const clearRecent = () => {
     gap: 8px;
   }
 
+  .recent-uploads {
+    margin-top: 30px;
+  }
+
   .recent-item {
-    flex-direction: column;
-    text-align: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .recent-image {
+    width: 60px;
+    height: 60px;
   }
 
   .recent-info {
-    order: 2;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .recent-name {
+    font-size: 14px;
   }
 
   .recent-actions {
-    order: 3;
+    width: 100%;
+    margin-top: 5px;
+  }
+
+  .recent-actions .el-button {
+    width: 100%;
   }
 }
 </style>

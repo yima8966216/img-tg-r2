@@ -83,6 +83,49 @@ onMounted(() => {
 })
 </script>
 
+<style>
+/* 全局样式 - 防止移动端溢出 */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+#app {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Element Plus 移动端适配 */
+@media (max-width: 768px) {
+  .el-card {
+    margin: 0 !important;
+  }
+
+  .el-card__body {
+    padding: 15px !important;
+  }
+
+  .el-card__header {
+    padding: 12px 15px !important;
+  }
+
+  .el-button {
+    padding: 8px 15px !important;
+  }
+
+  .el-radio-button__inner {
+    padding: 8px 12px !important;
+  }
+}
+</style>
+
 <style scoped>
 #app {
   min-height: 100vh;
@@ -150,16 +193,42 @@ onMounted(() => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .navbar {
+    height: 50px !important;
+    line-height: 50px;
+  }
+
   .nav-container {
     padding: 0 10px;
   }
 
+  .nav-left .logo {
+    font-size: 16px;
+  }
+
   .nav-left .logo span {
-    display: none;
+    font-size: 14px;
+  }
+
+  .nav-right :deep(.el-menu) {
+    display: flex;
+  }
+
+  .nav-right :deep(.el-menu-item) {
+    padding: 0 10px;
+    font-size: 14px;
   }
 
   .nav-right :deep(.el-menu-item) span {
     display: none;
+  }
+
+  .nav-right :deep(.el-icon) {
+    margin-right: 0 !important;
+  }
+
+  .main-content {
+    padding: 0;
   }
 }
 </style>

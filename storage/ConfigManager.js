@@ -137,10 +137,7 @@ export class ConfigManager {
    */
   getDefaultConfig() {
     return {
-      defaultStorage: 'local',
-      local: {
-        enabled: true
-      },
+      defaultStorage: 'telegraph',
       telegraph: {
         enabled: false,
         botToken: ''

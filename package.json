@@ -1,6 +1,6 @@
 {
   "name": "img-tg-r2",
-  "version": "2.1.0",
+  "version": "1.6.0",
   "description": "基于Vue 3和Element Plus的云端图床应用，支持Telegraph和Cloudflare R2存储",
   "main": "server.js",
   "type": "module",

@@ -12,7 +12,6 @@
       <div class="default-storage-section">
         <el-text class="section-title">默认存储方式</el-text>
         <el-radio-group v-model="config.defaultStorage" @change="handleDefaultStorageChange">
-          <el-radio-button value="local">本地存储</el-radio-button>
           <el-radio-button value="telegraph">Telegraph</el-radio-button>
           <el-radio-button value="r2">Cloudflare R2</el-radio-button>
         </el-radio-group>
@@ -22,25 +21,6 @@
 
       <!-- 存储配置标签页 -->
       <el-tabs v-model="activeTab" type="border-card">
-        <!-- 本地存储配置 -->
-        <el-tab-pane label="本地存储" name="local">
-          <el-form :model="config.local" label-width="140px" class="config-form">
-            <el-form-item label="启用状态">
-              <el-switch v-model="config.local.enabled" />
-            </el-form-item>
-            <el-form-item label="文件大小限制">
-              <el-input-number v-model="config.local.maxFileSize" :min="1024" :max="104857600" :step="1048576" />
-              <el-text size="small" type="info" style="margin-left: 10px">
-                {{ formatFileSize(config.local.maxFileSize) }}
-              </el-text>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="saveConfig('local')">保存配置</el-button>
-              <el-button @click="testConnection('local')">测试连接</el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-
         <!-- Telegraph 配置 -->
         <el-tab-pane label="Telegraph" name="telegraph">
           <el-alert title="配置说明" type="info" :closable="false" style="margin-bottom: 20px">
@@ -108,13 +88,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
 import { adminAPI } from '../utils/api'
 
-const activeTab = ref('local')
+const activeTab = ref('telegraph')
 const config = ref({
-  defaultStorage: 'local',
-  local: {
-    enabled: true,
-    maxFileSize: 10485760
-  },
+  defaultStorage: 'telegraph',
   telegraph: {
     enabled: false,
     botToken: ''

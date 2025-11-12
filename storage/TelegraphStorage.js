@@ -110,10 +110,17 @@ export class TelegraphStorage extends BaseStorage {
     const apiUrl = `https://api.telegram.org/bot${this.botToken}/${apiEndpoint}`
 
     try {
+      // 添加20秒超时控制
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 20000)
+      
       const response = await fetch(apiUrl, { 
         method: 'POST', 
-        body: formData 
+        body: formData,
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
 
       const responseData = await response.json()
 
@@ -126,15 +133,19 @@ export class TelegraphStorage extends BaseStorage {
         error: responseData.description || '上传到Telegram失败'
       }
     } catch (error) {
-      console.error('网络错误:', error)
+      if (error.name === 'AbortError') {
+        console.error('Telegram 请求超时')
+      } else {
+        console.error('网络错误:', error)
+      }
       
-      if (retryCount < MAX_RETRIES) {
-        // 网络错误时重试
+      if (retryCount < MAX_RETRIES && error.name !== 'AbortError') {
+        // 网络错误时重试（超时错误不重试）
         await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
         return await this.sendToTelegram(formData, apiEndpoint, retryCount + 1)
       }
 
-      return { success: false, error: '发生网络错误' }
+      return { success: false, error: error.name === 'AbortError' ? '请求超时' : '发生网络错误' }
     }
   }
 
@@ -251,13 +262,26 @@ export class TelegraphStorage extends BaseStorage {
 
     try {
       const apiUrl = `https://api.telegram.org/bot${this.botToken}/getMe`
+      
+      // 添加5秒超时控制
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      
       const response = await fetch(apiUrl, {
-        method: 'GET'
+        method: 'GET',
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
+      
       const data = await response.json()
       return response.ok && data.ok
     } catch (error) {
-      console.error('Telegraph 服务不可用:', error)
+      if (error.name === 'AbortError') {
+        console.error('Telegraph 服务检查超时')
+      } else {
+        console.error('Telegraph 服务不可用:', error)
+      }
       return false
     }
   }

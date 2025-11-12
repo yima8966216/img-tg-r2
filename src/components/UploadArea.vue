@@ -62,9 +62,9 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 const uploadStatus = ref('')
 const progressText = ref('')
-const selectedStorage = ref('local')
+const selectedStorage = ref('telegraph')
 const availableStorages = ref([
-  { value: 'local', label: '本地存储' }
+  { value: 'telegraph', label: 'Telegraph' }
 ])
 
 // 获取可用的存储服务
@@ -73,7 +73,6 @@ const fetchAvailableStorages = async () => {
     const response = await imageAPI.getAvailableStorages()
     if (response.success && response.data.storages) {
       const storageMap = {
-        'local': '本地存储',
         'telegraph': 'Telegraph',
         'r2': 'Cloudflare R2'
       }
@@ -301,8 +300,43 @@ const uploadFiles = async files => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
+  .upload-section {
+    margin-bottom: 20px;
+  }
+
+  .storage-selector {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .storage-label {
+    font-size: 13px;
+    width: 100%;
+    margin-bottom: 5px;
+  }
+
+  .storage-selector :deep(.el-radio-group) {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .storage-selector :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .storage-selector :deep(.el-radio-button__inner) {
+    width: 100%;
+    padding: 10px 8px !important;
+    font-size: 13px;
+  }
+
   .upload-area {
-    padding: 30px 15px;
+    padding: 20px 10px;
   }
 
   .upload-icon {
@@ -311,19 +345,24 @@ const uploadFiles = async files => {
 
   .upload-text .primary-text {
     font-size: 14px;
+    padding: 0 5px;
   }
 
   .upload-text .hint-text {
     font-size: 12px;
+    padding: 0 10px;
+    line-height: 1.5;
   }
 
   .quick-actions {
-    flex-direction: column;
-    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
   .quick-actions .el-button {
-    width: 200px;
+    flex: 1;
+    min-width: calc(50% - 5px);
   }
 }
 </style>

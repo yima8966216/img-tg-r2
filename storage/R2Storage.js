@@ -33,6 +33,9 @@ export class R2Storage extends BaseStorage {
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey
+      },
+      requestHandler: {
+        requestTimeout: 10000  // 10秒超时
       }
     })
     
@@ -241,12 +244,23 @@ export class R2Storage extends BaseStorage {
 
   async isAvailable() {
     try {
-      await this.s3Client.send(new HeadBucketCommand({
+      // 添加5秒超时检查
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('R2检查超时')), 5000)
+      )
+      
+      const checkPromise = this.s3Client.send(new HeadBucketCommand({
         Bucket: this.bucketName
       }))
+      
+      await Promise.race([checkPromise, timeoutPromise])
       return true
     } catch (error) {
-      console.error('R2 服务不可用:', error)
+      if (error.message === 'R2检查超时') {
+        console.error('R2 服务检查超时')
+      } else {
+        console.error('R2 服务不可用:', error)
+      }
       return false
     }
   }

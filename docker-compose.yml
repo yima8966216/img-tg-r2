@@ -1,6 +1,6 @@
 services:
   img-tg-r2:
-    image: ghcr.io/xia-66/img-tg-r2:1.2.0
+    image: ghcr.io/xia-66/img-tg-r2:1.6.0
     container_name: img-tg-r2
     restart: unless-stopped
     ports:
@@ -31,12 +31,6 @@ services:
       - ./data:/app/data
     networks:
       - img-tg-r2-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:33000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 networks:
   img-tg-r2-network:
