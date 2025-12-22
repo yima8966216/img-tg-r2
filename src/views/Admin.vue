@@ -1,14 +1,13 @@
 <template>
   <div class="admin-page">
     <div class="admin-container">
-      <!-- 统计信息 -->
       <div class="stats-section">
         <el-row :gutter="20">
           <el-col :xs="24" :sm="6">
-            <el-card class="stat-card" shadow="hover">
+            <el-card class="stat-card glass-card" shadow="hover">
               <div class="stat-content">
                 <div class="stat-icon total-images">
-                  <el-icon size="32"><PictureRounded /></el-icon>
+                  <el-icon size="28"><PictureRounded /></el-icon>
                 </div>
                 <div class="stat-info">
                   <div class="stat-number">{{ stats.totalImages || 0 }}</div>
@@ -18,42 +17,40 @@
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="6">
-            <el-card class="stat-card" shadow="hover">
+            <el-card class="stat-card glass-card" shadow="hover">
               <div class="stat-content">
                 <div class="stat-icon total-size">
-                  <el-icon size="32"><FolderOpened /></el-icon>
+                  <el-icon size="28"><FolderOpened /></el-icon>
                 </div>
                 <div class="stat-info">
                   <div class="stat-number">{{ formatFileSize(stats.totalSize || 0) }}</div>
-                  <div class="stat-label">总存储空间</div>
+                  <div class="stat-label">存储空间</div>
                 </div>
               </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="6">
-            <el-card class="stat-card" shadow="hover">
+            <el-card class="stat-card glass-card" shadow="hover">
               <div class="stat-content">
                 <div class="stat-icon telegraph-storage">
-                  <el-icon size="32"><ChatDotRound /></el-icon>
+                  <el-icon size="28"><ChatDotRound /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-number">{{ stats.storageStats?.telegraph?.count || 0 }} 张</div>
-                  <div class="stat-label">Telegraph</div>
-                  <div class="stat-sublabel">{{ formatFileSize(stats.storageStats?.telegraph?.size || 0) }}</div>
+                  <div class="stat-number">{{ stats.storageStats?.telegraph?.count || 0 }}</div>
+                  <div class="stat-label">TG 存储</div>
                 </div>
               </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="6">
-            <el-card class="stat-card" shadow="hover">
+            <el-card class="stat-card glass-card" shadow="hover">
               <div class="stat-content">
                 <div class="stat-icon r2-storage">
-                  <el-icon size="32"><Box /></el-icon>
+                  <el-icon size="28"><Box /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-number">{{ stats.storageStats?.r2?.count || 0 }} 张</div>
+                  <div class="stat-number">{{ stats.storageStats?.r2?.count || 0 }}</div>
                   <div class="stat-label">R2 存储</div>
-                  <div class="stat-sublabel">{{ formatFileSize(stats.storageStats?.r2?.size || 0) }}</div>
                 </div>
               </div>
             </el-card>
@@ -61,180 +58,92 @@
         </el-row>
       </div>
 
-      <!-- 存储配置 -->
-      <div class="storage-config-section">
+      <div class="glass-wrapper">
         <StorageConfig />
       </div>
 
-      <!-- 图片管理 -->
-      <div class="images-management">
+      <div class="glass-wrapper" style="margin-top: 30px">
         <AdminImageGallery @stats-updated="loadStats" />
       </div>
     </div>
-
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Setting, PictureRounded, FolderOpened, Monitor, Box, ChatDotRound } from '@element-plus/icons-vue'
 import { adminAPI } from '../utils/api'
 import AdminImageGallery from '../components/AdminImageGallery.vue'
 import StorageConfig from '../components/StorageConfig.vue'
+import { PictureRounded, FolderOpened, Box, ChatDotRound } from '@element-plus/icons-vue'
 
 const stats = ref({})
-
-// 加载统计信息
 const loadStats = async () => {
   try {
-    const response = await adminAPI.getStats()
-    if (response.success) {
-      stats.value = response.data
-    }
-  } catch (error) {
-    console.error('加载统计信息失败:', error)
-  }
+    const res = await adminAPI.getStats()
+    if (res.success) stats.value = res.data
+  } catch (e) { console.error(e) }
 }
-
-// 格式化文件大小
-const formatFileSize = bytes => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+const formatFileSize = b => {
+  if (b === 0) return '0 B'
+  const k = 1024; const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(b) / Math.log(k))
+  return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
-
-onMounted(() => {
-  loadStats()
-})
+onMounted(() => loadStats())
 </script>
 
 <style scoped>
 .admin-page {
-  min-height: calc(100vh - 60px);
-  background: #fafbfc;
-  padding: 20px;
+  min-height: 100vh;
+  padding: 30px 20px;
+  background-color: #fcfcfc;
+  background-image: 
+    linear-gradient(#f1f1f1 1.5px, transparent 1.5px),
+    linear-gradient(90deg, #f1f1f1 1.5px, transparent 1.5px),
+    linear-gradient(#f9f9f9 1px, transparent 1px),
+    linear-gradient(90deg, #f9f9f9 1px, transparent 1px);
+  background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px;
 }
 
-.admin-container {
-  max-width: 1200px;
-  margin: 0 auto;
+.admin-container { max-width: 1200px; margin: 0 auto; }
+.stats-section { margin-bottom: 30px; }
+
+.glass-card {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
 
-.stats-section {
-  margin-bottom: 30px;
+.glass-card:hover {
+  border-color: rgba(64, 158, 255, 0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
 }
 
-.stat-card {
-  height: 120px;
-  display: flex;
-  align-items: center;
+/* 深度渗透子组件卡片样式 */
+.glass-wrapper :deep(.el-card) {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-.stat-content {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-}
+.stat-card { height: 110px; display: flex; align-items: center; }
+.stat-content { display: flex; align-items: center; gap: 15px; width: 100%; }
+.stat-icon { width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; }
 
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
+.stat-icon.total-images { background: #409eff; }
+.stat-icon.total-size { background: #67c23a; }
+.stat-icon.telegraph-storage { background: #409eff; opacity: 0.8; }
+.stat-icon.r2-storage { background: #f56c6c; }
 
-.stat-icon.total-images {
-  background: #409eff;
-}
+.stat-number { font-size: 1.6rem; font-weight: 800; color: #303133; }
+.stat-label { font-size: 0.8rem; color: #909399; font-weight: 600; }
 
-.stat-icon.total-size {
-  background: #67c23a;
-}
-
-.stat-icon.server-status {
-  background: #e6a23c;
-}
-
-.stat-icon.telegraph-storage {
-  background: #409eff;
-}
-
-.stat-icon.r2-storage {
-  background: #f56c6c;
-}
-
-.stat-info {
-  flex: 1;
-}
-
-.stat-number {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 0.9rem;
-  color: #909399;
-}
-
-.stat-sublabel {
-  font-size: 0.8rem;
-  color: #67c23a;
-  margin-top: 2px;
-}
-
-.storage-config-section {
-  margin-bottom: 30px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: #409eff;
-}
-
-.images-management {
-  margin-bottom: 30px;
-}
-
-/* 响应式设计 */
 @media (max-width: 768px) {
-  .admin-page {
-    padding: 10px;
-  }
-
-  .stat-card {
-    margin-bottom: 15px;
-    height: 100px;
-  }
-
-  .stat-icon {
-    width: 50px;
-    height: 50px;
-  }
-
-  .stat-number {
-    font-size: 1.5rem;
-  }
-}
-
-/* 全局样式 - 提高弹出框层级 */
-:deep(.admin-popconfirm) {
-  z-index: 9999 !important;
-}
-
-:deep(.el-popper) {
-  z-index: 9999 !important;
+  .stat-card { margin-bottom: 15px; }
 }
 </style>

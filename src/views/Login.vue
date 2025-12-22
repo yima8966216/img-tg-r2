@@ -1,30 +1,49 @@
 <template>
   <div class="login-page">
     <div class="login-container">
-      <el-card class="login-card" shadow="always">
+      <el-card class="login-card glass-card" shadow="always">
         <template #header>
           <div class="login-header">
-            <el-icon size="32" color="#409eff"><User /></el-icon>
+            <el-icon size="40" color="#409eff"><Unlock /></el-icon>
             <h2>管理员登录</h2>
+            <p class="subtitle">ENGINEERING CONTROL PANEL</p>
           </div>
         </template>
 
         <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" @submit.prevent="handleLogin">
           <el-form-item prop="username">
-            <el-input v-model="loginForm.username" placeholder="用户名" size="large" :prefix-icon="User" clearable />
+            <el-input 
+              v-model="loginForm.username" 
+              placeholder="用户名" 
+              size="large" 
+              :prefix-icon="User" 
+              clearable 
+            />
           </el-form-item>
 
           <el-form-item prop="password">
-            <el-input v-model="loginForm.password" type="password" placeholder="密码" size="large" :prefix-icon="Lock" show-password clearable @keyup.enter="handleLogin" />
+            <el-input 
+              v-model="loginForm.password" 
+              type="password" 
+              placeholder="密码" 
+              size="large" 
+              :prefix-icon="Lock" 
+              show-password 
+              clearable 
+              @keyup.enter="handleLogin" 
+            />
           </el-form-item>
 
           <el-form-item>
             <el-button type="primary" size="large" :loading="loading" @click="handleLogin" class="login-button">
-              <span v-if="!loading">登录</span>
-              <span v-else>登录中...</span>
+              进入管理系统
             </el-button>
           </el-form-item>
         </el-form>
+
+        <div class="login-footer">
+          <el-link type="info" :underline="false" @click="$router.push('/')">返回首页</el-link>
+        </div>
       </el-card>
     </div>
   </div>
@@ -34,67 +53,45 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { User, Lock, Unlock } from '@element-plus/icons-vue'
 import { adminAPI } from '../utils/api'
 
 const router = useRouter()
-
 const loginFormRef = ref()
 const loading = ref(false)
 
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
-
+const loginForm = reactive({ username: '', password: '' })
 const loginRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 5, message: '密码长度不能少于5位', trigger: 'blur' }
-  ]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 5, message: '长度不少于5位', trigger: 'blur' }]
 }
 
-// 检查是否已登录
 onMounted(async () => {
   const token = localStorage.getItem('admin_token')
   if (token) {
     try {
-      // 验证token是否有效
       await adminAPI.verifyToken()
-      // token有效，直接跳转到管理页面
-      ElMessage.success('您已登录，正在跳转...')
       router.push('/admin')
-    } catch (error) {
-      // token无效，清除并停留在登录页
+    } catch (e) {
       localStorage.removeItem('admin_token')
     }
   }
 })
 
-// 处理登录
 const handleLogin = async () => {
   if (!loginFormRef.value) return
-
   try {
     const valid = await loginFormRef.value.validate()
     if (!valid) return
-
     loading.value = true
-
     const response = await adminAPI.login(loginForm.username, loginForm.password)
-
     if (response.success) {
-      // 保存token
       localStorage.setItem('admin_token', response.data.token)
-
       ElMessage.success('登录成功')
-
-      // 跳转到管理页面
       router.push('/admin')
     }
   } catch (error) {
-    console.error('登录失败:', error)
+    console.error(error)
   } finally {
     loading.value = false
   }
@@ -103,51 +100,46 @@ const handleLogin = async () => {
 
 <style scoped>
 .login-page {
-  min-height: calc(100vh - 60px);
-  background: #fafbfc;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  background-color: #fcfcfc;
+  background-image: 
+    linear-gradient(#f1f1f1 1.5px, transparent 1.5px),
+    linear-gradient(90deg, #f1f1f1 1.5px, transparent 1.5px),
+    linear-gradient(#f9f9f9 1px, transparent 1px),
+    linear-gradient(90deg, #f9f9f9 1px, transparent 1px);
+  background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px;
 }
 
-.login-container {
-  width: 100%;
-  max-width: 400px;
+.login-container { width: 100%; max-width: 400px; padding: 20px; }
+
+.glass-card {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
 }
 
-.login-card {
-  border-radius: 12px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+.glass-card:hover {
+  border-color: rgba(64, 158, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px rgba(64, 158, 255, 0.1);
 }
 
-.login-header {
-  text-align: center;
-  margin-bottom: 20px;
-}
+.login-header { text-align: center; }
+.login-header h2 { margin: 10px 0 5px 0; color: #303133; font-weight: 700; }
+.subtitle { font-size: 11px; color: #909399; letter-spacing: 2px; margin-bottom: 20px; }
 
-.login-header h2 {
-  margin: 12px 0 0 0;
-  color: #409eff;
-  font-weight: 600;
-}
+.login-button { width: 100%; height: 48px; font-weight: 600; border-radius: 10px; margin-top: 10px; }
+.login-footer { text-align: center; margin-top: 20px; }
 
-.login-button {
-  width: 100%;
-  height: 48px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-/* 响应式设计 */
-@media (max-width: 480px) {
-  .login-page {
-    padding: 10px;
-  }
-
-  .login-container {
-    max-width: 100%;
-  }
+:deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
 }
 </style>

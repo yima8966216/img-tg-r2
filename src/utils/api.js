@@ -135,6 +135,11 @@ export const adminAPI = {
   // 测试存储连接（带配置）
   testStorageConnection(storageType, config) {
     return api.post('/admin/storage/test', { storageType, config })
+  },
+
+  // 新增：同步 R2 云端图片到本地索引
+  syncR2() {
+    return api.post('/admin/sync-r2')
   }
 }
 
