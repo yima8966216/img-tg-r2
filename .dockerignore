@@ -1,19 +1,30 @@
+# 💡 忽略依赖包（容器内会重新安装）
 node_modules
 npm-debug.log
+
+# 💡 忽略 Git 相关
 .git
 .gitignore
+
+# 💡 忽略环境配置
 .env
 .env.*
 !env.example
-dist
+
+# ⚠️ 注意：这里绝对不能写 dist ！！！
+# 我们需要把宿主机编译好的静态文件拷进去
+
+# 💡 忽略文档（可选，为了精简镜像体积）
 *.md
 !README.md
+
+# 💡 忽略 IDE 与系统文件
 .vscode
 .idea
 *.log
 .DS_Store
 Thumbs.db
-# data 目录需要在容器中挂载，但构建时不需要
+
+# 💡 忽略数据目录（data 目录在容器启动时挂载，构建时不需要带入）
 data/*
 !data/.gitkeep
-

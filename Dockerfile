@@ -13,9 +13,10 @@ RUN apk add --no-cache \
     pixman
 
 # 1. 拷贝已经在宿主机编译好的前端静态文件
+# 💡 此时 .dockerignore 不再拦截，COPY 能够成功
 COPY dist/ ./dist/
 
-# 2. 拷贝后端驱动和全量逻辑
+# 2. 拷贝后端驱动和驱动全量逻辑
 COPY storage/ ./storage/
 COPY server.js ./server.js
 COPY package*.json ./
