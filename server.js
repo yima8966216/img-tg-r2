@@ -152,7 +152,7 @@ async function initStorageManager(req = null) {
       baseUrl: baseUrl
     })
   } catch (err) {
-    console.error('❌ 存储管理器加载失败:', err.message)
+    console.error('❌ 存储管理器初始化异常:', err.message)
   }
 }
 
@@ -162,7 +162,7 @@ app.use(cors())
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
-// 1. 域名隔离拦截
+// 1. 隔离拦截
 app.use(domainIsolationMiddleware)
 
 // 2. 静态文件目录
@@ -173,10 +173,10 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
 
-  if (!token) return res.status(401).json({ success: false, message: '未提供令牌' })
+  if (!token) return res.status(401).json({ success: false, message: '未提供访问令牌' })
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: '无效令牌' })
+    if (err) return res.status(403).json({ success: false, message: '无效的访问令牌' })
     req.user = user
     next()
   })
@@ -187,18 +187,19 @@ const upload = multer({
   limits: { fileSize: 10485760 } 
 })
 
-// --- 代理路由 ---
+// --- 代理分发路由 ---
 
 app.get('/tg/:shortId', async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
     const s = storageManager.getStorage('telegraph')
-    if (!s) return res.status(500).send('Telegraph driver not loaded')
+    if (!s) return res.status(500).send('Storage driver not ready')
     const shortId = req.params.shortId.split('.')[0]
     const fileId = s.getFileIdByShortId(shortId)
     const result = await s.getFileByFileId(fileId)
     if (result.success) {
       res.setHeader('Content-Type', result.contentType || 'image/jpeg')
+      res.setHeader('Cache-Control', 'public, max-age=31536000')
       res.send(result.buffer)
     } else {
       res.status(404).send('Not Found')
@@ -210,7 +211,7 @@ app.get('/r2/:shortId', async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
     const s = storageManager.getStorage('r2')
-    if (!s) return res.status(500).send('R2 driver not loaded')
+    if (!s) return res.status(500).send('Storage driver not ready')
     const filename = s.getFilenameByShortId(req.params.shortId.split('.')[0])
     const fileData = await s.getFile(filename)
     res.set({ 
@@ -222,7 +223,7 @@ app.get('/r2/:shortId', async (req, res) => {
   } catch (e) { res.status(404).send('Not Found') }
 })
 
-// --- API 业务逻辑 ---
+// --- API 业务接口 ---
 
 app.get('/api/storage/available', async (req, res) => {
   try {
@@ -243,6 +244,7 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     if (!storageManager) await initStorageManager(req)
     const storageType = req.body.storageType || 'telegraph'
     const s = storageManager.getStorage(storageType)
+    if (!s) throw new Error('Selected storage driver is not available')
     const filename = `${Date.now()}_${Math.round(Math.random() * 1e9)}${path.extname(req.file.originalname)}`
     const result = await s.upload(req.file.buffer, filename, req.file.mimetype)
     
@@ -276,6 +278,7 @@ app.delete('/api/admin/images/:filename', authenticateToken, async (req, res) =>
     if (!storageManager) await initStorageManager(req)
     const storageType = req.query.storageType || 'telegraph'
     const s = storageManager.getStorage(storageType)
+    if (!s) throw new Error('Storage driver not found')
     const success = await s.delete(req.params.filename)
     res.json({ success })
   } catch (e) { res.status(500).json({ success: false, message: e.message }) }
@@ -287,7 +290,7 @@ app.post('/api/admin/sync-r2', authenticateToken, async (req, res) => {
     const s = storageManager.getStorage('r2')
     if (s && s.getName() === 'r2') {
       const result = await s.syncFromCloud()
-      res.json({ success: true, message: `同步成功：新增 ${result.addedCount} 张`, data: result })
+      res.json({ success: true, message: `同步成功：新增 ${result.addedCount} 张图片`, data: result })
     } else {
       res.status(400).json({ success: false, message: 'R2驱动未挂载' })
     }
@@ -295,7 +298,7 @@ app.post('/api/admin/sync-r2', authenticateToken, async (req, res) => {
 })
 
 /**
- * 💡 配置保存接口 (暴力适配前端所有习惯)
+ * 💡 关键修复：统一配置保存处理函数
  */
 const handleSaveConfig = async (req, res) => {
   try {
@@ -326,7 +329,6 @@ const handleSaveConfig = async (req, res) => {
   }
 }
 
-// 适配多种前端路径 (解决 404 切换问题)
 app.post('/api/admin/storage/default', authenticateToken, handleSaveConfig)
 app.post('/api/admin/storage/config', authenticateToken, handleSaveConfig)
 
@@ -338,12 +340,12 @@ app.post('/api/admin/storage/test', authenticateToken, async (req, res) => {
       const { TelegraphStorage } = await import('./storage/TelegraphStorage.js')
       const s = new TelegraphStorage({ ...cfg, baseUrl })
       const available = await s.isAvailable()
-      res.json({ success: true, data: { success: available, message: available ? 'OK' : 'Fail' } })
+      res.json({ success: true, data: { success: available, message: available ? 'OK' : '连接失败' } })
     } else if (storageType === 'r2') {
       const { R2Storage } = await import('./storage/R2Storage.js')
       const s = new R2Storage({ ...cfg, baseUrl })
       const available = await s.isAvailable()
-      res.json({ success: true, data: { success: available, message: available ? 'OK' : 'Fail' } })
+      res.json({ success: true, data: { success: available, message: available ? 'OK' : '测试失败' } })
     }
   } catch (e) { res.json({ success: true, data: { success: false, message: e.message } }) }
 })
@@ -363,13 +365,12 @@ app.get('/api/admin/storage/config/full', authenticateToken, (req, res) => {
   res.json({ success: true, data: storageConfig.getConfig(true) })
 })
 
-// 单页应用路由回退
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })
 
 /**
- * 💡 启动服务器
+ * 启动服务器
  */
 async function startServer() {
   await initAdmin()

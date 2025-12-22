@@ -1,46 +1,56 @@
-# 使用官方 Node.js 镜像作为基础镜像
-FROM node:18-alpine
+# ================= Stage 1: Build Stage =================
+FROM node:18-alpine AS build-stage
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装 sharp 依赖（Alpine 需要额外的构建工具）
+# 安装构建工具
 RUN apk add --no-cache \
     python3 \
     make \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    giflib-dev \
-    pixman-dev
+    g++
 
-# 复制 package.json 和 package-lock.json
+# 复制依赖描述文件
+COPY package*.json ./
+
+# 安装完整依赖
+RUN npm install
+
+# 复制源代码
+COPY . .
+
+# 执行构建
+RUN npm run build
+
+# ================= Stage 2: Run Stage =================
+FROM node:18-alpine
+
+WORKDIR /app
+
+# 安装 sharp 运行时依赖
+RUN apk add --no-cache \
+    cairo \
+    jpeg \
+    pango \
+    giflib \
+    pixman
+
+# 拷贝构建好的 dist
+COPY --from=build-stage /app/dist ./dist
+
+# 拷贝后端代码
+COPY storage/ ./storage/
+COPY server.js ./server.js
 COPY package*.json ./
 
 # 安装生产依赖
 RUN npm ci --only=production
 
-# 复制源代码
-COPY . .
+# 准备目录
+RUN rm -rf data && mkdir -p /app/data
 
-# 构建前端项目
-RUN npm install vite @vitejs/plugin-vue unplugin-auto-import unplugin-vue-components --save-dev && \
-    npm run build && \
-    npm uninstall vite @vitejs/plugin-vue unplugin-auto-import unplugin-vue-components
-
-# 清理不必要的文件和敏感数据
-RUN rm -rf src public node_modules/.cache && \
-    rm -rf data/*.json && \
-    mkdir -p /app/data
-
-# 暴露端口
 EXPOSE 33000
 
-# 设置环境变量
 ENV NODE_ENV=production \
     PORT=33000
 
-# 启动应用
 CMD ["node", "server.js"]
-
