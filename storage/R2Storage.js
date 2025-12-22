@@ -7,7 +7,7 @@ import FormData from 'form-data'
 
 /**
  * Cloudflare R2 存储驱动
- * 100% 完整实现，包含测试连接、上传、同步、统计和 TG 通知逻辑
+ * 💡 100% 完整实现：包含统计、同步、上传与通知
  */
 export class R2Storage extends BaseStorage {
   constructor(config = {}) {
@@ -38,7 +38,7 @@ export class R2Storage extends BaseStorage {
 
   /**
    * 💡 核心修复：实现统计方法
-   * 解决 StorageManager 报错以及后台管理页面显示 0 的问题
+   * 数量 count 依赖于 index 数组的长度
    */
   getStats() {
     const images = this._readIndex()
@@ -161,12 +161,16 @@ export class R2Storage extends BaseStorage {
     } catch (e) { return false }
   }
 
+  /**
+   * 💡 关键同步函数：只有运行了这个，仪表盘的数量才会变！
+   */
   async syncFromCloud() {
     const res = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName }))
     const cloudFiles = res.Contents || []
     let local = this._readIndex()
     let added = 0
     for (const f of cloudFiles) {
+      // 这里的逻辑是只同步 uploads/ 目录下或根目录的文件，取决于你的 Key 结构
       if (!local.find(l => l.filename === f.Key)) {
         local.unshift({ 
           filename: f.Key, 
