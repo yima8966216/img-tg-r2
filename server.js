@@ -19,14 +19,14 @@ const __dirname = path.dirname(__filename)
 const app = express()
 
 // 固定端口配置
-const PORT = 33000
+const PORT = process.env.PORT || 33000
 
 // 存储配置管理
 const storageConfig = new StorageConfig()
 
 /**
  * 💡 核心逻辑：JWT 密钥持久化逻辑
- * 确保服务器重启后，已登录的 Token 不会失效
+ * 确保 Docker 容器重启后，已登录的管理员不会被踢下线
  */
 function getJwtSecret() {
   const config = storageConfig.getConfig(true)
@@ -152,7 +152,7 @@ async function initStorageManager(req = null) {
       baseUrl: baseUrl
     })
   } catch (err) {
-    console.error('❌ 驱动挂载异常:', err.message)
+    console.error('❌ 存储管理器加载失败:', err.message)
   }
 }
 
@@ -162,10 +162,10 @@ app.use(cors())
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
-// 1. 隔离拦截
+// 1. 域名隔离拦截
 app.use(domainIsolationMiddleware)
 
-// 2. 静态文件
+// 2. 静态文件目录
 app.use(express.static(path.join(__dirname, 'dist')))
 
 // 身份验证
@@ -173,10 +173,10 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization']
   const token = authHeader && authHeader.split(' ')[1]
 
-  if (!token) return res.status(401).json({ success: false, message: '未提供访问令牌' })
+  if (!token) return res.status(401).json({ success: false, message: '未提供令牌' })
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: '无效的访问令牌' })
+    if (err) return res.status(403).json({ success: false, message: '无效令牌' })
     req.user = user
     next()
   })
@@ -187,13 +187,13 @@ const upload = multer({
   limits: { fileSize: 10485760 } 
 })
 
-// --- 代理分发路由 ---
+// --- 代理路由 ---
 
 app.get('/tg/:shortId', async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
     const s = storageManager.getStorage('telegraph')
-    if (!s) return res.status(500).send('Storage not ready')
+    if (!s) return res.status(500).send('Telegraph driver not loaded')
     const shortId = req.params.shortId.split('.')[0]
     const fileId = s.getFileIdByShortId(shortId)
     const result = await s.getFileByFileId(fileId)
@@ -210,7 +210,7 @@ app.get('/r2/:shortId', async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
     const s = storageManager.getStorage('r2')
-    if (!s) return res.status(500).send('Storage not ready')
+    if (!s) return res.status(500).send('R2 driver not loaded')
     const filename = s.getFilenameByShortId(req.params.shortId.split('.')[0])
     const fileData = await s.getFile(filename)
     res.set({ 
@@ -222,7 +222,7 @@ app.get('/r2/:shortId', async (req, res) => {
   } catch (e) { res.status(404).send('Not Found') }
 })
 
-// --- API 业务接口 ---
+// --- API 业务逻辑 ---
 
 app.get('/api/storage/available', async (req, res) => {
   try {
@@ -243,7 +243,6 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     if (!storageManager) await initStorageManager(req)
     const storageType = req.body.storageType || 'telegraph'
     const s = storageManager.getStorage(storageType)
-    if (!s) throw new Error('Selected storage not available')
     const filename = `${Date.now()}_${Math.round(Math.random() * 1e9)}${path.extname(req.file.originalname)}`
     const result = await s.upload(req.file.buffer, filename, req.file.mimetype)
     
@@ -277,7 +276,6 @@ app.delete('/api/admin/images/:filename', authenticateToken, async (req, res) =>
     if (!storageManager) await initStorageManager(req)
     const storageType = req.query.storageType || 'telegraph'
     const s = storageManager.getStorage(storageType)
-    if (!s) throw new Error('Storage not available')
     const success = await s.delete(req.params.filename)
     res.json({ success })
   } catch (e) { res.status(500).json({ success: false, message: e.message }) }
@@ -297,36 +295,26 @@ app.post('/api/admin/sync-r2', authenticateToken, async (req, res) => {
 })
 
 /**
- * 💡 终极修复：配置保存处理函数
- * 逻辑：自动兼容你前端发送的多种格式。解决 404 和 Invalid parameters。
+ * 💡 配置保存接口 (暴力适配前端所有习惯)
  */
 const handleSaveConfig = async (req, res) => {
   try {
     let updateType = 'global'
     let updateData = null
 
-    // 1. 尝试识别切换默认存储的 Payload (针对你的前端习惯)
     if (req.body.defaultStorage) {
       updateData = { defaultStorage: req.body.defaultStorage }
-    } 
-    // 2. 尝试识别前端直接发送 storageType 的情况
-    else if (req.body.storageType && !req.body.config) {
+    } else if (req.body.storageType && !req.body.config) {
       updateData = { defaultStorage: req.body.storageType }
-    }
-    // 3. 尝试识别标准配置更新
-    else if (req.body.storageType && req.body.config) {
+    } else if (req.body.storageType && req.body.config) {
       updateType = req.body.storageType
       updateData = req.body.config
     }
 
-    if (!updateData) {
-      console.warn('⚠️ 配置更新请求参数不完整:', req.body)
-      return res.status(400).json({ success: false, message: 'Invalid parameters' })
-    }
+    if (!updateData) return res.status(400).json({ success: false, message: 'Invalid parameters' })
 
     const result = storageConfig.updateStorageConfig(updateType, updateData)
     if (result.success) {
-      // 核心：清空旧管理器，强制下次请求重新加载驱动
       storageManager = null
       await initStorageManager()
       res.json({ success: true, message: '保存并切换成功' })
@@ -334,11 +322,11 @@ const handleSaveConfig = async (req, res) => {
       res.status(500).json({ success: false, message: result.message })
     }
   } catch (e) {
-    res.status(500).json({ success: false, message: '系统异常: ' + e.message })
+    res.status(500).json({ success: false, message: '系统异常' })
   }
 }
 
-// 💡 路由对齐：同时监听你前端报错的那个 404 路径和标准路径
+// 适配多种前端路径 (解决 404 切换问题)
 app.post('/api/admin/storage/default', authenticateToken, handleSaveConfig)
 app.post('/api/admin/storage/config', authenticateToken, handleSaveConfig)
 
@@ -375,6 +363,7 @@ app.get('/api/admin/storage/config/full', authenticateToken, (req, res) => {
   res.json({ success: true, data: storageConfig.getConfig(true) })
 })
 
+// 单页应用路由回退
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })

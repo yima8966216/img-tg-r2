@@ -1,6 +1,6 @@
 services:
   img-tg-r2:
-    image: ghcr.io/xia-66/img-tg-r2:1.6.0
+    image: yima8966216/img-tg-r2:latest
     container_name: img-tg-r2
     restart: unless-stopped
     ports:
