@@ -3,7 +3,7 @@ import { R2Storage } from './R2Storage.js';
 
 /**
  * 存储管理器：负责根据配置动态加载不同的存储驱动
- * 100% 完整逻辑，确保参数传递绝对对齐
+ * 💡 100% 完整逻辑：补全了后台统计所需的 getStoragesStats 函数
  */
 export class StorageManager {
   constructor() {
@@ -64,6 +64,28 @@ export class StorageManager {
     }
 
     return manager;
+  }
+
+  /**
+   * 💡 核心修复：获取所有存储驱动的统计数据
+   * 解决后台管理页面显示“0”数据的 Bug
+   */
+  getStoragesStats() {
+    const stats = {
+      totalCount: 0,
+      totalSize: 0,
+      storages: {}
+    };
+
+    for (const [name, storage] of this.storages.entries()) {
+      // 这里的 stats() 必须在对应的驱动类中实现
+      const storageStats = storage.getStats(); 
+      stats.storages[name] = storageStats;
+      stats.totalCount += storageStats.count || 0;
+      stats.totalSize += storageStats.size || 0;
+    }
+
+    return stats;
   }
 
   /**

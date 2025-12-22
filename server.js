@@ -151,6 +151,11 @@ async function initStorageManager(req = null) {
       ...config,
       baseUrl: baseUrl
     })
+
+    // 打印当前加载的图片统计，用于排查数据不显示问题
+    const stats = storageManager.getStoragesStats()
+    console.log('📊 驱动加载成功，当前数据索引统计:', JSON.stringify(stats))
+    
   } catch (err) {
     console.error('❌ 存储管理器初始化异常:', err.message)
   }
@@ -224,6 +229,22 @@ app.get('/r2/:shortId', async (req, res) => {
 })
 
 // --- API 业务接口 ---
+
+/**
+ * 💡 补全接口：获取后台管理首页统计数据
+ */
+app.get('/api/admin/stats', authenticateToken, async (req, res) => {
+  try {
+    if (!storageManager) await initStorageManager(req)
+    const stats = storageManager.getStoragesStats()
+    res.json({
+      success: true,
+      data: stats
+    })
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message })
+  }
+})
 
 app.get('/api/storage/available', async (req, res) => {
   try {
