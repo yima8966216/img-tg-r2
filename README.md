@@ -49,7 +49,7 @@
 mkdir img-tg-r2 && cd img-tg-r2
 
 # 2. 下载配置文件
-curl -O https://raw.githubusercontent.com/xia-66/img-tg-r2/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/yima8966216/img-tg-r2/main/docker-compose.yml
 
 # 3. 启动服务（.env文件会自动生成）
 docker-compose up -d
@@ -63,7 +63,7 @@ docker-compose up -d
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/xia-66/img-tg-r2.git
+git clone https://github.com/yima8966216/img-tg-r2.git
 cd img-tg-r2
 
 # 2. 构建镜像
@@ -79,7 +79,7 @@ docker-compose up -d
 
 ```bash
 # 克隆项目
-git clone https://github.com/xia-66/img-tg-r2.git
+git clone https://github.com/yima8966216/img-tg-r2.git
 cd img-tg-r2
 
 # 安装依赖
@@ -444,7 +444,7 @@ server {
 
 ## 🐛 问题反馈
 
-如果遇到任何问题，请在 [Issues](https://github.com/xia-66/img-tg-r2/issues) 页面提交反馈。
+如果遇到任何问题，请在 [Issues](https://github.com/yima8966216/img-tg-r2/issues) 页面提交反馈。
 
 ---
 
