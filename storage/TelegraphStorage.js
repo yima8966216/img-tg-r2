@@ -34,6 +34,19 @@ export class TelegraphStorage extends BaseStorage {
     } catch (e) { console.error('❌ 写入 TG 索引失败:', e.message) }
   }
 
+  /**
+   * 💡 核心修复：补全统计函数
+   * 解决后台仪表盘显示 0 的问题
+   */
+  getStats() {
+    const images = this._readIndex()
+    const totalSize = images.reduce((sum, item) => sum + (item.size || 0), 0)
+    return {
+      count: images.length,
+      size: totalSize
+    }
+  }
+
   async isAvailable() {
     if (!this.botToken || !this.chatId) return false
     try {

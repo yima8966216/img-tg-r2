@@ -7,7 +7,7 @@ import FormData from 'form-data'
 
 /**
  * Cloudflare R2 存储驱动
- * 100% 完整实现，包含测试连接、上传、同步和 TG 通知逻辑
+ * 100% 完整实现，包含测试连接、上传、同步、统计和 TG 通知逻辑
  */
 export class R2Storage extends BaseStorage {
   constructor(config = {}) {
@@ -37,6 +37,19 @@ export class R2Storage extends BaseStorage {
   }
 
   /**
+   * 💡 核心修复：实现统计方法
+   * 解决 StorageManager 报错以及后台管理页面显示 0 的问题
+   */
+  getStats() {
+    const images = this._readIndex()
+    const totalSize = images.reduce((sum, item) => sum + (item.size || 0), 0)
+    return {
+      count: images.length,
+      size: totalSize
+    }
+  }
+
+  /**
    * 💡 核心修复：实现测试连接方法
    */
   async isAvailable() {
@@ -61,7 +74,8 @@ export class R2Storage extends BaseStorage {
 
   _readIndex() {
     try {
-      return JSON.parse(fs.readFileSync(this.indexFile, 'utf8'))
+      const content = fs.readFileSync(this.indexFile, 'utf8')
+      return JSON.parse(content)
     } catch (e) { return [] }
   }
 
@@ -115,6 +129,7 @@ export class R2Storage extends BaseStorage {
     
     const form = new FormData()
     form.append('chat_id', this.tgChatId)
+    // 只有小于 10MB 的图片才发送预览
     if (buffer.length < 10 * 1024 * 1024) {
       form.append('photo', buffer, { filename, contentType: mimetype })
     }
