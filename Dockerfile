@@ -1,32 +1,10 @@
-# ================= Stage 1: Build Stage =================
-FROM node:18-alpine AS build-stage
-
-WORKDIR /app
-
-# 安装构建工具
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++
-
-# 复制依赖描述文件
-COPY package*.json ./
-
-# 安装完整依赖
-RUN npm install
-
-# 复制源代码
-COPY . .
-
-# 执行构建
-RUN npm run build
-
-# ================= Stage 2: Run Stage =================
+# 使用官方轻量级 Node 镜像
 FROM node:18-alpine
 
+# 设置工作目录
 WORKDIR /app
 
-# 安装 sharp 运行时依赖
+# 💡 安装 sharp 运行所需的最小化运行时依赖
 RUN apk add --no-cache \
     cairo \
     jpeg \
@@ -34,23 +12,27 @@ RUN apk add --no-cache \
     giflib \
     pixman
 
-# 拷贝构建好的 dist
-COPY --from=build-stage /app/dist ./dist
+# 1. 拷贝已经在宿主机编译好的前端静态文件
+COPY dist/ ./dist/
 
-# 拷贝后端代码
+# 2. 拷贝后端驱动和全量逻辑
 COPY storage/ ./storage/
 COPY server.js ./server.js
 COPY package*.json ./
 
-# 安装生产依赖
+# 3. 只安装生产环境依赖
+# --arch 参数确保在不同架构下下载正确的二进制包
 RUN npm ci --only=production
 
-# 准备目录
+# 4. 准备持久化数据目录
 RUN rm -rf data && mkdir -p /app/data
 
+# 暴露固定端口
 EXPOSE 33000
 
+# 设置生产环境变量
 ENV NODE_ENV=production \
     PORT=33000
 
+# 启动应用
 CMD ["node", "server.js"]
