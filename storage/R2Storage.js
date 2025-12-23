@@ -4,10 +4,11 @@ import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
 import FormData from 'form-data'
+import { StorageConfig } from './StorageConfig.js'
 
 /**
  * Cloudflare R2 存储驱动
- * 💡 100% 完整实现：包含统计、同步、上传与通知
+ * 💡 100% 完整实现：修复 R2 上传不通知 Bug，确保原始文件名显示
  */
 export class R2Storage extends BaseStorage {
   constructor(config = {}) {
@@ -17,9 +18,8 @@ export class R2Storage extends BaseStorage {
     this.baseUrl = (config.baseUrl || '').replace(/\/$/, '')
     this.indexFile = path.join(process.cwd(), 'data', 'r2-index.json')
     
-    // 💡 自动识别通知参数
-    this.tgBotToken = config.tgBotToken || config.botToken
-    this.tgChatId = config.tgChatId || config.chatId
+    // 💡 初始化配置管理器，用于实时抓取最新的全局通知配置
+    this.configManager = new StorageConfig()
 
     // 初始化 S3 客户端
     if (this.accountId && config.accessKeyId && config.secretAccessKey) {
@@ -37,34 +37,29 @@ export class R2Storage extends BaseStorage {
   }
 
   /**
-   * 💡 统计方法
+   * 💡 实时获取 Telegram 通知配置
+   * 优先从环境变量读取，其次从全局配置文件读取
    */
-  getStats() {
-    const images = this._readIndex()
-    const totalSize = images.reduce((sum, item) => sum + (item.size || 0), 0)
+  _getNotificationConfig() {
+    const fullConfig = this.configManager.loadConfig()
     return {
-      count: images.length,
-      size: totalSize
+      token: process.env.TG_BOT_TOKEN || (fullConfig.telegraph && fullConfig.telegraph.botToken),
+      chatId: process.env.TG_CHAT_ID || (fullConfig.telegraph && fullConfig.telegraph.chatId)
     }
   }
 
-  /**
-   * 💡 核心修复：实现测试连接方法
-   */
+  getStats() {
+    const images = this._readIndex()
+    const totalSize = images.reduce((sum, item) => sum + (item.size || 0), 0)
+    return { count: images.length, size: totalSize }
+  }
+
   async isAvailable() {
-    // 必须有客户端和桶名才能测试
     if (!this.s3Client || !this.bucketName) return false
     try {
-      // 通过 List 操作测试权限和连接性
-      await this.s3Client.send(new ListObjectsV2Command({
-        Bucket: this.bucketName,
-        MaxKeys: 1
-      }))
+      await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName, MaxKeys: 1 }))
       return true
-    } catch (error) {
-      console.error('❌ R2 可用性检查失败:', error.message)
-      return false
-    }
+    } catch (error) { return false }
   }
 
   _ensureIndexFile() {
@@ -84,7 +79,11 @@ export class R2Storage extends BaseStorage {
     fs.writeFileSync(this.indexFile, JSON.stringify(data, null, 2), 'utf8')
   }
 
-  async upload(fileBuffer, filename, mimetype) {
+  /**
+   * 💡 上传核心：补全 originalName 接收
+   */
+  async upload(fileBuffer, filename, mimetype, originalName) {
+    // 1. 上传至 R2
     await this.s3Client.send(new PutObjectCommand({
       Bucket: this.bucketName,
       Key: filename,
@@ -95,9 +94,11 @@ export class R2Storage extends BaseStorage {
     const shortId = Math.random().toString(36).substring(2, 10)
     const publicUrl = `/r2/${shortId}${path.extname(filename)}`
     
+    // 2. 写入索引
     const images = this._readIndex()
     const newImg = {
       filename,
+      originalName: originalName || filename, // 记录原始文件名
       shortId,
       size: fileBuffer.length,
       uploadTime: new Date().toLocaleString('zh-CN')
@@ -105,7 +106,9 @@ export class R2Storage extends BaseStorage {
     images.unshift(newImg)
     this._writeIndex(images)
 
-    await this._sendSafeNotification(fileBuffer, filename, mimetype, publicUrl)
+    // 3. 💡 触发通知（不阻塞上传响应）
+    this._sendSafeNotification(fileBuffer, originalName || filename, mimetype, publicUrl)
+      .catch(err => console.error('🔔 通知发送失败:', err.message))
 
     return { 
       url: publicUrl, 
@@ -116,23 +119,53 @@ export class R2Storage extends BaseStorage {
     }
   }
 
-  async _sendSafeNotification(buffer, filename, mimetype, url) {
-    if (!this.tgBotToken || !this.tgChatId) return
+  /**
+   * 💡 终极修复：R2 上传专用通知函数
+   */
+  async _sendSafeNotification(buffer, displayName, mimetype, url) {
+    const tg = this._getNotificationConfig()
+    
+    // 如果没有配置 Token 或 ChatId，直接退出
+    if (!tg.token || !tg.chatId) return
+
     const fullUrl = `${this.baseUrl}${url}`
-    const caption = `☁️ <b>Cloudflare R2 上传成功</b>\n\n🔗 <b>图片链接：</b>\n<code>${fullUrl}</code>\n\n📦 <b>文件名：</b>\n<code>${filename}</code>`
+    const fileSizeText = (buffer.length / 1024).toFixed(2) + ' KB'
+
+    // 复刻 1:1 样式：大小加粗、代码块链接
+    const caption = `☁️ <b>Cloudflare R2 上传成功</b>\n\n` +
+                    `🔗 <b>图片链接：</b>\n` +
+                    `<code>${fullUrl}</code>\n\n` +
+                    `⚖️ <b>文件大小：</b>\n` +
+                    `<b>${fileSizeText}</b>\n\n` + 
+                    `📦 <b>文件名：</b>\n` +
+                    `<code>${displayName}</code>`
+
     const form = new FormData()
-    form.append('chat_id', this.tgChatId)
+    form.append('chat_id', tg.chatId)
+    
+    // 只有小于 10MB 的图片才发送图片预览，否则发链接
     if (buffer.length < 10 * 1024 * 1024) {
-      form.append('photo', buffer, { filename, contentType: mimetype })
+      form.append('photo', buffer, { filename: displayName, contentType: mimetype })
     }
+    
     form.append('caption', caption)
     form.append('parse_mode', 'HTML')
+
     try {
-      await axios.post(`https://api.telegram.org/bot${this.tgBotToken}/sendPhoto`, form, { 
+      await axios.post(`https://api.telegram.org/bot${tg.token}/sendPhoto`, form, { 
         headers: form.getHeaders(),
         timeout: 15000 
       })
-    } catch (err) {}
+    } catch (err) {
+      // 如果图片发送失败（例如格式不支持），降级为发送纯文字消息
+      try {
+        await axios.post(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
+          chat_id: tg.chatId,
+          text: caption,
+          parse_mode: 'HTML'
+        })
+      } catch (retryErr) {}
+    }
   }
 
   async list() {
@@ -153,6 +186,7 @@ export class R2Storage extends BaseStorage {
   }
 
   async syncFromCloud() {
+    if (!this.s3Client) throw new Error('R2 客户端未初始化')
     const res = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName }))
     const cloudFiles = res.Contents || []
     let local = this._readIndex()

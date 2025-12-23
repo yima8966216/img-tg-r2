@@ -277,8 +277,12 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     const storageType = req.body.storageType || 'telegraph'
     const s = storageManager.getStorage(storageType)
     if (!s) throw new Error('Selected storage driver is not available')
+    
+    // 💡 关键修复：从 Body 获取原始中文文件名，并传递给驱动以支持图文通知
+    const originalName = req.body.originalName || req.file.originalname
     const filename = `${Date.now()}_${Math.round(Math.random() * 1e9)}${path.extname(req.file.originalname)}`
-    const result = await s.upload(req.file.buffer, filename, req.file.mimetype)
+    
+    const result = await s.upload(req.file.buffer, filename, req.file.mimetype, originalName)
     
     const baseUrl = getFinalBaseUrl(req)
     result.url = `${baseUrl}${result.url}`

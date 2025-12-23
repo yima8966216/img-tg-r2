@@ -41,16 +41,14 @@
       <div class="filter-section">
         <el-row :gutter="16">
           <el-col :xs="24" :sm="12" :md="8">
-            <el-input v-model="searchText" placeholder="搜索原名或短名..." :prefix-icon="Search" clearable @input="filterImages" />
+            <el-input v-model="searchText" placeholder="搜索原名或短名..." :prefix-icon="Search" clearable />
           </el-col>
           <el-col :xs="24" :sm="12" :md="8">
-            <el-select v-model="sortBy" placeholder="排序方式" @change="sortImages" style="width: 100%">
+            <el-select v-model="sortBy" placeholder="排序方式" style="width: 100%">
               <el-option label="上传时间（新到旧）" value="time-desc" />
               <el-option label="上传时间（旧到新）" value="time-asc" />
               <el-option label="文件大小（大到小）" value="size-desc" />
               <el-option label="文件大小（小到大）" value="size-asc" />
-              <el-option label="文件名（A-Z）" value="name-asc" />
-              <el-option label="文件名（Z-A）" value="name-desc" />
             </el-select>
           </el-col>
           <el-col :xs="24" :sm="24" :md="8">
@@ -178,14 +176,20 @@
 
       <div v-if="currentImage" class="preview-content">
         <div class="preview-img-box">
-          <el-image :src="currentImage.url" fit="contain" class="preview-img-main" :preview-src-list="[currentImage.url]" />
+          <el-image 
+            :src="currentImage.url" 
+            fit="contain" 
+            class="preview-img-main" 
+            :preview-src-list="[currentImage.url]" 
+            preview-teleported
+          />
         </div>
         <div class="share-links">
           <div class="link-item" v-for="link in linkFormats" :key="link.label">
             <label>{{ link.label }}</label>
             <el-input v-model="link.value" readonly>
               <template #append>
-                <el-button @click="copyUrl(link.value)">复制</el-button>
+                <el-button @click="copyUrl(link.value, link.label)">复制</el-button>
               </template>
             </el-input>
           </div>
@@ -215,6 +219,28 @@ const sortBy = ref('time-desc')
 const selectedImages = ref([])
 const isMobile = ref(false)
 
+/**
+ * 💡 核心对齐：同步云端逻辑
+ */
+const handleSyncCloud = async () => {
+  if (selectedStorage.value !== 'r2') return
+  syncing.value = true
+  try {
+    const response = await adminAPI.syncR2()
+    if (response.success) {
+      ElMessage.success(response.message || '同步成功')
+      await loadImages()
+      emit('stats-updated')
+    } else {
+      ElMessage.error(response.message || '同步失败')
+    }
+  } catch (e) {
+    ElMessage.error('同步异常: ' + (e.response?.data?.message || e.message))
+  } finally {
+    syncing.value = false
+  }
+}
+
 const getOriginalCacheName = (img) => {
   if (!img) return null
   if (img.originalName) return img.originalName
@@ -240,7 +266,7 @@ const linkFormats = computed(() => {
   const { url } = currentImage.value
   const name = getDisplayName(currentImage.value)
   return [
-    { label: 'URL', value: url },
+    { label: '原始链接', value: url },
     { label: 'Markdown', value: `![${name}](${url})` },
     { label: 'HTML代码', value: `<img src="${url}" alt="${name}" />` },
     { label: 'BBCode', value: `[img]${url}[/img]` }
@@ -253,6 +279,10 @@ const filteredImages = computed(() => {
     const s = searchText.value.toLowerCase()
     result = result.filter(img => getDisplayName(img).toLowerCase().includes(s))
   }
+  if (sortBy.value === 'time-desc') result.sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
+  if (sortBy.value === 'time-asc') result.sort((a, b) => new Date(a.uploadTime) - new Date(b.uploadTime))
+  if (sortBy.value === 'size-desc') result.sort((a, b) => (b.size || 0) - (a.size || 0))
+  if (sortBy.value === 'size-asc') result.sort((a, b) => (a.size || 0) - (b.size || 0))
   return result
 })
 
@@ -275,7 +305,33 @@ const toggleViewMode = () => viewMode.value = viewMode.value === 'grid' ? 'list'
 const selectAll = () => selectedImages.value = selectedImages.value.length === filteredImages.length ? [] : filteredImages.value.map(img => img.filename)
 const handleSelectionChange = selection => selectedImages.value = selection.map(item => item.filename)
 const previewImage = image => { currentImage.value = image; previewVisible.value = true }
-const copyUrl = async url => { await navigator.clipboard.writeText(url); ElMessage.success('复制成功') }
+
+/**
+ * 💡 物理级复制加固方案
+ * 针对非 HTTPS 环境的兼容性修复
+ */
+const copyUrl = async (text, label) => {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      // 传统 Textarea 兜底方案，确保在任何环境下都能完成复制
+      const textArea = document.createElement("textarea")
+      textArea.value = text
+      textArea.style.position = "fixed"
+      textArea.style.left = "-9999px"
+      textArea.style.top = "0"
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+    ElMessage.success(`${label || '内容'} 已复制`)
+  } catch (err) {
+    ElMessage.error('复制失败，请手动选取')
+  }
+}
 
 const downloadImage = image => {
   const link = document.createElement('a'); link.href = image.url
@@ -291,14 +347,17 @@ const deleteImage = async filename => {
 }
 
 const deleteSelectedImages = async () => {
-  const promises = selectedImages.value.map(f => adminAPI.deleteImage(f, selectedStorage.value))
-  await Promise.all(promises); ElMessage.success('批量删除完成'); loadImages(); emit('stats-updated')
+  try {
+    const promises = selectedImages.value.map(f => adminAPI.deleteImage(f, selectedStorage.value))
+    await Promise.all(promises); ElMessage.success('批量删除完成'); loadImages(); emit('stats-updated')
+  } catch (e) { ElMessage.error('部分删除失败') }
 }
 
 const formatFileSize = b => {
   if (!b) return '0 B'
   const k = 1024; const i = Math.floor(Math.log(b) / Math.log(k))
-  return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + ['B', 'KB', 'MB', 'GB'][i]
+  const units = ['B', 'KB', 'MB', 'GB']
+  return parseFloat((b / Math.pow(k, i)).toFixed(2)) + ' ' + units[i]
 }
 
 const formatTime = t => t ? t.replace(/\//g, '-') : ''
@@ -307,84 +366,40 @@ onMounted(() => { isMobile.value = window.innerWidth <= 768; loadImages() })
 </script>
 
 <style scoped>
+/* 💡 样式保持 100% 对齐，无需修改 */
 .admin-gallery { margin-top: 10px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .header-left { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #409eff; }
 .filter-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
 .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; padding: 10px 0; }
-
 .image-card { border: 1px solid #eee; border-radius: 12px; overflow: hidden; background: white; transition: 0.3s; position: relative; }
 .image-card.is-selected { border-color: #409eff; box-shadow: 0 0 0 2px #409eff; }
-
 .image-wrapper { position: relative; width: 100%; height: 160px; cursor: pointer; overflow: hidden; display: flex; background: #f9f9f9; }
 .image-preview { width: 100%; height: 100%; transition: 0.3s; }
 .image-card:hover .image-preview { transform: scale(1.05); }
-
 .storage-tag-floating { position: absolute; top: 8px; right: 8px; z-index: 10; }
-
 .image-info { padding: 12px; background: white; border-top: 1px solid #f0f0f0; }
 .info-content-flex { display: flex; align-items: center; justify-content: space-between; min-height: 48px; }
-
 .image-filename-box { flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-
 .title-with-icon { display: flex; align-items: center; gap: 6px; overflow: hidden; }
 .title-prefix-icon { color: #333; flex-shrink: 0; }
-
 .square-style-title { font-size: 14px; font-weight: 800; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .original-alias-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alias-prefix-icon { flex-shrink: 0; margin-left: 2px; }
-
 .info-checkbox-area { padding-left: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; }
-
 .circle-tick-checkbox { height: 32px; width: 32px; display: flex; align-items: center; justify-content: center; }
-
-:deep(.el-checkbox__inner) { 
-  width: 28px !important; 
-  height: 28px !important; 
-  border-radius: 50% !important; 
-  border: 2px solid #dcdfe6 !important; 
-  background-color: #fff !important;
-  transition: none !important; 
-  position: relative !important;
-}
-
-:deep(.el-checkbox.is-checked .el-checkbox__inner) {
-  background-color: #409eff !important;
-  border-color: #409eff !important;
-}
-
-:deep(.el-checkbox__inner::after) { 
-  box-sizing: content-box !important;
-  content: "" !important;
-  border: 3px solid #fff !important; 
-  border-left: 0 !important;
-  border-top: 0 !important;
-  height: 12px !important; 
-  width: 6px !important; 
-  left: 9px !important; 
-  top: 4px !important; 
-  transform: rotate(45deg) !important; 
-  transition: none !important; 
-  position: absolute !important;
-}
-
+:deep(.el-checkbox__inner) { width: 28px !important; height: 28px !important; border-radius: 50% !important; border: 2px solid #dcdfe6 !important; background-color: #fff !important; transition: none !important; position: relative !important; }
+:deep(.el-checkbox.is-checked .el-checkbox__inner) { background-color: #409eff !important; border-color: #409eff !important; }
+:deep(.el-checkbox__inner::after) { box-sizing: content-box !important; content: "" !important; border: 3px solid #fff !important; border-left: 0 !important; border-top: 0 !important; height: 12px !important; width: 6px !important; left: 9px !important; top: 4px !important; transform: rotate(45deg) !important; transition: none !important; position: absolute !important; }
 .image-meta { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 8px; border-top: 1px solid #f5f5f5; padding-top: 8px; }
-
-/* 💡 弹窗头部对齐样式 */
 .dialog-custom-header { display: flex; align-items: center; gap: 8px; }
 .dialog-title-icon { color: #409eff; }
 .dialog-title-text { font-weight: bold; font-size: 16px; color: #303133; }
-
 .preview-content { text-align: center; }
 .preview-img-box { background: #f5f7fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
 .preview-img-main { max-width: 100%; max-height: 60vh; border-radius: 4px; }
 .share-links { text-align: left; }
 .link-item { margin-bottom: 12px; }
 .link-item label { font-size: 12px; font-weight: bold; color: #666; display: block; margin-bottom: 5px; }
-
-@media (max-width: 768px) {
-  .image-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .card-header { flex-direction: column; gap: 12px; align-items: flex-start; }
-}
+@media (max-width: 768px) { .image-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .card-header { flex-direction: column; gap: 12px; align-items: flex-start; } }
 </style>

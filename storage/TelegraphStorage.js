@@ -3,21 +3,36 @@ import axios from 'axios'
 import FormData from 'form-data'
 import fs from 'fs'
 import path from 'path'
+import { StorageConfig } from './StorageConfig.js'
 
 /**
  * Telegraph (Telegram Bot) 存储驱动
- * 100% 完整实现：包含统计、上传、读取和索引持久化
+ * 💡 100% 完整实现：包含统计、上传、读取、索引持久化和像素级通知对齐
  */
 export class TelegraphStorage extends BaseStorage {
   constructor(config = {}) {
     super(config)
     this.botToken = config.botToken
     this.chatId = config.chatId
-    this.apiUrl = `https://api.telegram.org/bot${this.botToken}`
     this.baseUrl = (config.baseUrl || '').replace(/\/$/, '')
     // 💡 索引文件存放在挂载的 data 目录下
     this.indexFile = path.join(process.cwd(), 'data', 'tg-index.json')
+    
+    // 初始化配置管理器用于实时重载配置
+    this.configManager = new StorageConfig()
     this._ensureIndexFile()
+  }
+
+  /**
+   * 💡 实时获取最新配置
+   * 确保即使在面板修改了 Token，上传时也能立即生效
+   */
+  _getLatestConfig() {
+    const fullConfig = this.configManager.loadConfig()
+    return {
+      token: process.env.TG_BOT_TOKEN || (fullConfig.telegraph && fullConfig.telegraph.botToken) || this.botToken,
+      chatId: process.env.TG_CHAT_ID || (fullConfig.telegraph && fullConfig.telegraph.chatId) || this.chatId
+    }
   }
 
   /**
@@ -42,7 +57,6 @@ export class TelegraphStorage extends BaseStorage {
       const content = fs.readFileSync(this.indexFile, 'utf8')
       return JSON.parse(content)
     } catch (e) {
-      console.error('❌ 读取 TG 索引异常:', e.message)
       return []
     }
   }
@@ -59,8 +73,7 @@ export class TelegraphStorage extends BaseStorage {
   }
 
   /**
-   * 💡 核心修复：补全统计函数
-   * 仪表盘显示的数字直接来源于此
+   * 💡 补全统计函数
    */
   getStats() {
     const images = this._readIndex()
@@ -75,10 +88,11 @@ export class TelegraphStorage extends BaseStorage {
    * 💡 检查驱动是否可用
    */
   async isAvailable() {
-    if (!this.botToken || !this.chatId) return false
+    const conf = this._getLatestConfig()
+    if (!conf.token || !conf.chatId) return false
     try {
-      const response = await axios.post(`${this.apiUrl}/getChat`, { 
-        chat_id: this.chatId 
+      const response = await axios.post(`https://api.telegram.org/bot${conf.token}/getChat`, { 
+        chat_id: conf.chatId 
       }, { timeout: 5000 })
       return response.data.ok === true
     } catch (error) {
@@ -101,38 +115,45 @@ export class TelegraphStorage extends BaseStorage {
 
   /**
    * 💡 执行上传并更新索引
+   * 修复点：对齐参数 originalName，像素级对齐通知样式
    */
-  async upload(fileBuffer, filename, mimetype) {
+  async upload(fileBuffer, filename, mimetype, originalName) {
+    const conf = this._getLatestConfig()
+    if (!conf.token || !conf.chatId) throw new Error('Telegram 配置缺失')
+
     const form = new FormData()
-    form.append('chat_id', this.chatId)
-    form.append('photo', fileBuffer, { filename, contentType: mimetype })
+    form.append('chat_id', conf.chatId)
+    form.append('photo', fileBuffer, { filename: originalName || filename, contentType: mimetype })
     
     const shortId = Math.random().toString(36).substring(2, 10)
     const publicUrl = `/tg/${shortId}${path.extname(filename)}`
     const fullUrl = `${this.baseUrl}${publicUrl}`
+    const fileSizeText = (fileBuffer.length / 1024).toFixed(2) + ' KB'
 
-    // 格式化 TG 消息通知
+    // 💡 样式对齐：标题、链接代码块、大小加粗、文件名代码块
     const captionText = 
       `🚀 <b>Telegraph 上传成功</b>\n\n` +
       `🔗 <b>图片链接：</b>\n` +
-      `<b><code>${fullUrl}</code></b>\n\n` +
+      `<code>${fullUrl}</code>\n\n` +
+      `⚖️ <b>文件大小：</b>\n` +
+      `<b>${fileSizeText}</b>\n\n` + 
       `📦 <b>文件名：</b>\n` +
-      `<b><code>${filename}</code></b>`
+      `<code>${originalName || filename}</code>`
 
     form.append('caption', captionText)
     form.append('parse_mode', 'HTML')
 
-    const response = await axios.post(`${this.apiUrl}/sendPhoto`, form, { 
+    const response = await axios.post(`https://api.telegram.org/bot${conf.token}/sendPhoto`, form, { 
       headers: form.getHeaders(), 
       timeout: 30000 
     })
 
     if (response.data.ok) {
-      // 获取 TG 生成的高清图 fileId
       const fileId = response.data.result.photo[response.data.result.photo.length - 1].file_id
       const images = this._readIndex()
       const newImg = {
         filename,
+        originalName: originalName || filename,
         fileId,
         shortId,
         size: fileBuffer.length,
@@ -147,7 +168,8 @@ export class TelegraphStorage extends BaseStorage {
         filename: filename,
         storageType: 'telegraph',
         size: fileBuffer.length,
-        uploadTime: newImg.uploadTime
+        uploadTime: newImg.uploadTime,
+        ...newImg
       }
     }
     throw new Error('Telegraph 上传失败')
@@ -165,9 +187,10 @@ export class TelegraphStorage extends BaseStorage {
    * 💡 从 TG 代理下载图片流
    */
   async getFileByFileId(fileId) {
-    const fileInfo = await axios.get(`${this.apiUrl}/getFile?file_id=${fileId}`)
+    const conf = this._getLatestConfig()
+    const fileInfo = await axios.get(`https://api.telegram.org/bot${conf.token}/getFile?file_id=${fileId}`)
     const filePath = fileInfo.data.result.file_path
-    const fileResponse = await axios.get(`https://api.telegram.org/file/bot${this.botToken}/${filePath}`, { 
+    const fileResponse = await axios.get(`https://api.telegram.org/file/bot${conf.token}/${filePath}`, { 
       responseType: 'arraybuffer' 
     })
     return { 
