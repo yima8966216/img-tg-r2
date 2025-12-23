@@ -37,8 +37,7 @@ export class R2Storage extends BaseStorage {
   }
 
   /**
-   * 💡 核心修复：实现统计方法
-   * 数量 count 依赖于 index 数组的长度
+   * 💡 统计方法
    */
   getStats() {
     const images = this._readIndex()
@@ -53,8 +52,10 @@ export class R2Storage extends BaseStorage {
    * 💡 核心修复：实现测试连接方法
    */
   async isAvailable() {
+    // 必须有客户端和桶名才能测试
     if (!this.s3Client || !this.bucketName) return false
     try {
+      // 通过 List 操作测试权限和连接性
       await this.s3Client.send(new ListObjectsV2Command({
         Bucket: this.bucketName,
         MaxKeys: 1
@@ -83,9 +84,6 @@ export class R2Storage extends BaseStorage {
     fs.writeFileSync(this.indexFile, JSON.stringify(data, null, 2), 'utf8')
   }
 
-  /**
-   * 💡 上传逻辑：包含字段对齐和 TG 通知
-   */
   async upload(fileBuffer, filename, mimetype) {
     await this.s3Client.send(new PutObjectCommand({
       Bucket: this.bucketName,
@@ -118,24 +116,17 @@ export class R2Storage extends BaseStorage {
     }
   }
 
-  /**
-   * 💡 TG 通知发送逻辑
-   */
   async _sendSafeNotification(buffer, filename, mimetype, url) {
     if (!this.tgBotToken || !this.tgChatId) return
-    
     const fullUrl = `${this.baseUrl}${url}`
     const caption = `☁️ <b>Cloudflare R2 上传成功</b>\n\n🔗 <b>图片链接：</b>\n<code>${fullUrl}</code>\n\n📦 <b>文件名：</b>\n<code>${filename}</code>`
-    
     const form = new FormData()
     form.append('chat_id', this.tgChatId)
-    // 只有小于 10MB 的图片才发送预览
     if (buffer.length < 10 * 1024 * 1024) {
       form.append('photo', buffer, { filename, contentType: mimetype })
     }
     form.append('caption', caption)
     form.append('parse_mode', 'HTML')
-
     try {
       await axios.post(`https://api.telegram.org/bot${this.tgBotToken}/sendPhoto`, form, { 
         headers: form.getHeaders(),
@@ -161,16 +152,12 @@ export class R2Storage extends BaseStorage {
     } catch (e) { return false }
   }
 
-  /**
-   * 💡 关键同步函数：只有运行了这个，仪表盘的数量才会变！
-   */
   async syncFromCloud() {
     const res = await this.s3Client.send(new ListObjectsV2Command({ Bucket: this.bucketName }))
     const cloudFiles = res.Contents || []
     let local = this._readIndex()
     let added = 0
     for (const f of cloudFiles) {
-      // 这里的逻辑是只同步 uploads/ 目录下或根目录的文件，取决于你的 Key 结构
       if (!local.find(l => l.filename === f.Key)) {
         local.unshift({ 
           filename: f.Key, 

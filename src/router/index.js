@@ -21,6 +21,13 @@ const routes = [
     name: 'Admin',
     component: Admin,
     meta: { title: '后台管理', requiresAuth: true }
+  },
+  {
+    // 💡 广场页面：明确标记不需要验证
+    path: '/square',
+    name: 'Square',
+    component: () => import('../views/Square.vue'),
+    meta: { title: '图片广场', requiresAuth: false }
   }
 ]
 
@@ -29,66 +36,60 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
+// 路由守卫 - 彻底修复死循环逻辑
 router.beforeEach(async (to, from, next) => {
-  // 设置页面标题
+  // 1. 设置页面标题
   document.title = to.meta.title ? `${to.meta.title} - Vue 图床` : 'Vue 图床'
 
   const token = localStorage.getItem('admin_token')
 
-  // 如果访问登录页且已有token，验证token是否有效
+  // 2. 如果是去广场或首页（白名单），直接放行，不走任何 fetch 验证，防止接口卡死网页
+  if (to.path === '/square' || to.path === '/') {
+    next()
+    return
+  }
+
+  // 3. 如果访问登录页且已有 token
   if (to.path === '/login' && token) {
     try {
-      // 验证token是否有效
       const response = await fetch('/api/admin/verify', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       })
-
       if (response.ok) {
-        // token有效，直接跳转到管理页面
         next('/admin')
         return
       } else {
-        // token无效，清除并继续到登录页
         localStorage.removeItem('admin_token')
       }
     } catch (error) {
-      // 验证失败，清除token
       localStorage.removeItem('admin_token')
     }
   }
 
-  // 检查是否需要认证
+  // 4. 检查是否需要认证 (仅针对 Admin 页面)
   if (to.meta.requiresAuth) {
     if (!token) {
       next('/login')
       return
     }
 
-    // 验证token是否有效
     try {
       const response = await fetch('/api/admin/verify', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       })
-
       if (!response.ok) {
-        // token无效，跳转到登录页
         localStorage.removeItem('admin_token')
         next('/login')
         return
       }
     } catch (error) {
-      // 验证失败，跳转到登录页
       localStorage.removeItem('admin_token')
       next('/login')
       return
     }
   }
 
+  // 5. 最后一道防线：必须调用 next()
   next()
 })
 

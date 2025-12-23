@@ -24,6 +24,7 @@ api.interceptors.request.use(
 // 响应拦截器
 api.interceptors.response.use(
   response => {
+    // 💡 注意：这里返回的是 response.data，即后端的完整 JSON 对象
     return response.data
   },
   error => {
@@ -86,6 +87,7 @@ export const adminAPI = {
   },
 
   // 获取统计信息
+  // 💡 对应 server.js 中的 app.get('/api/admin/stats')
   getStats() {
     return api.get('/admin/stats')
   },

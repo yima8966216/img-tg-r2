@@ -23,11 +23,11 @@
           </template>
 
           <div class="recent-list">
-            <div v-for="upload in recentUploads" :key="upload.filename" class="recent-item">
+            <div v-for="upload in recentUploads" :key="upload.url" class="recent-item">
               <div class="recent-preview">
                 <el-image 
                   :src="upload.url" 
-                  :alt="upload.originalName" 
+                  :alt="upload.originalName || 'image'" 
                   fit="cover" 
                   class="recent-image" 
                   :preview-src-list="[upload.url]"
@@ -41,7 +41,9 @@
 
               <div class="recent-info-full">
                 <div class="info-top-row">
-                  <span class="recent-name" :title="upload.originalName">{{ upload.originalName }}</span>
+                  <span class="recent-name" :title="upload.originalName">
+                    {{ upload.originalName || '未命名文件' }}
+                  </span>
                   <span class="recent-time">{{ upload.uploadTime }}</span>
                 </div>
 
@@ -56,19 +58,19 @@
                   </div>
                   
                   <div class="link-input-group">
-                    <el-input :model-value="`![${upload.originalName}](${upload.url})`" readonly size="small">
+                    <el-input :model-value="`![${upload.originalName || 'image'}](${upload.url})`" readonly size="small">
                       <template #prepend><span class="link-label">Markdown</span></template>
                       <template #append>
-                        <el-button @click="copyText(`![${upload.originalName}](${upload.url})`, 'Markdown')">复制</el-button>
+                        <el-button @click="copyText(`![${upload.originalName || 'image'}](${upload.url})`, 'Markdown')">复制</el-button>
                       </template>
                     </el-input>
                   </div>
 
                   <div class="link-input-group">
-                    <el-input :model-value="`<img src='${upload.url}' alt='${upload.originalName}' />`" readonly size="small">
+                    <el-input :model-value="`<img src='${upload.url}' alt='${upload.originalName || 'image'}' />`" readonly size="small">
                       <template #prepend><span class="link-label">HTML</span></template>
                       <template #append>
-                        <el-button @click="copyText(`<img src='${upload.url}' alt='${upload.originalName}' />`, 'HTML')">复制</el-button>
+                        <el-button @click="copyText(`<img src='${upload.url}' alt='${upload.originalName || 'image'}' />`, 'HTML')">复制</el-button>
                       </template>
                     </el-input>
                   </div>
@@ -85,7 +87,7 @@
               </div>
 
               <div class="recent-actions">
-                <el-button size="small" type="primary" link @click="downloadFile(upload.url, upload.originalName)">下载</el-button>
+                <el-button size="small" type="primary" link @click="downloadFile(upload.url, upload.originalName || 'image')">下载</el-button>
               </div>
             </div>
           </div>
@@ -105,6 +107,25 @@ const recentUploads = ref([])
 
 const handleUploadSuccess = uploadData => {
   if (uploadData) {
+    // 💡 强化逻辑：多重探测文件名，防止 undefined 卡死
+    // 1. 检查 originalName
+    // 2. 检查 filename
+    // 3. 检查 name (有些接口返回这个)
+    // 4. 从 URL 截取
+    if (!uploadData.originalName) {
+      uploadData.originalName = uploadData.filename || uploadData.name || '';
+      
+      if (!uploadData.originalName && uploadData.url) {
+        const urlParts = uploadData.url.split('/');
+        uploadData.originalName = urlParts[urlParts.length - 1];
+      }
+      
+      // 最终兜底
+      if (!uploadData.originalName) {
+        uploadData.originalName = 'image_' + Date.now();
+      }
+    }
+
     recentUploads.value.unshift(uploadData)
     if (recentUploads.value.length > 5) {
       recentUploads.value = recentUploads.value.slice(0, 5)
@@ -265,6 +286,11 @@ const clearRecent = () => {
   font-weight: 700;
   color: #303133;
   font-size: 14px;
+  /* 💡 增加超出省略，防止文件名过长挤压布局 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
 }
 
 .recent-time {
@@ -294,5 +320,6 @@ const clearRecent = () => {
 @media (max-width: 768px) {
   .recent-item { flex-direction: column; align-items: center; }
   .links-display-grid { grid-template-columns: 1fr; width: 100%; }
+  .recent-name { max-width: 100%; text-align: center; }
 }
 </style>

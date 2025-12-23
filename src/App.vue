@@ -1,7 +1,6 @@
 <template>
   <div id="app">
     <el-config-provider :locale="zhCn">
-      <!-- 导航栏 -->
       <el-header class="navbar">
         <div class="nav-container">
           <div class="nav-left">
@@ -10,30 +9,54 @@
               <span>Vue 图床</span>
             </router-link>
           </div>
-          <div class="nav-right">
-            <el-menu mode="horizontal" :default-active="activeIndex" router>
-              <el-menu-item index="/">
-                <el-icon><House /></el-icon>
-                <span>首页</span>
-              </el-menu-item>
-              <el-menu-item v-if="!isAdmin" index="/login">
-                <el-icon><Setting /></el-icon>
-                <span>后台管理</span>
-              </el-menu-item>
-              <el-menu-item v-if="isAdmin" index="/admin">
-                <el-icon><Setting /></el-icon>
-                <span>后台管理</span>
-              </el-menu-item>
-              <el-menu-item v-if="isAdmin" @click="logout">
-                <el-icon><SwitchButton /></el-icon>
-                <span>退出登录</span>
-              </el-menu-item>
-            </el-menu>
+
+          <div class="nav-right-custom">
+            <router-link to="/" class="custom-nav-item" :class="{ active: activeIndex === '/' }">
+              <el-icon><House /></el-icon>
+              <span>首页</span>
+            </router-link>
+
+            <router-link 
+              to="/square" 
+              class="custom-nav-item" 
+              :class="{ active: activeIndex === '/square' }"
+            >
+              <el-icon><Compass /></el-icon>
+              <span>图片广场</span>
+            </router-link>
+
+            <router-link 
+              v-if="!isLoggedIn" 
+              to="/login" 
+              class="custom-nav-item" 
+              :class="{ active: activeIndex === '/login' }"
+            >
+              <el-icon><Setting /></el-icon>
+              <span>登录</span>
+            </router-link>
+
+            <router-link 
+              v-if="isLoggedIn && !isInAdminPage" 
+              to="/admin" 
+              class="custom-nav-item" 
+              :class="{ active: activeIndex.startsWith('/admin') }"
+            >
+              <el-icon><Setting /></el-icon>
+              <span>后台管理</span>
+            </router-link>
+
+            <div 
+              v-if="isLoggedIn && isInAdminPage" 
+              class="custom-nav-item logout-btn" 
+              @click="logout"
+            >
+              <el-icon><SwitchButton /></el-icon>
+              <span>退出登录</span>
+            </div>
           </div>
         </div>
       </el-header>
 
-      <!-- 主要内容区域 -->
       <el-main class="main-content">
         <router-view />
       </el-main>
@@ -42,19 +65,24 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElConfigProvider } from 'element-plus'
-import { House, Picture, Setting, SwitchButton } from '@element-plus/icons-vue'
+import { ElMessage, ElConfigProvider, ElMessageBox } from 'element-plus'
+import { House, Picture, Setting, SwitchButton, Compass } from '@element-plus/icons-vue'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import { adminAPI } from './utils/api'
 
 const router = useRouter()
 const route = useRoute()
 
-const isAdmin = ref(false)
+// 💡 状态管理：是否已登录
+const isLoggedIn = ref(false)
 
+// 💡 计算属性：当前激活的路径
 const activeIndex = computed(() => route.path)
+
+// 💡 计算属性：判断当前是否在后台页面
+const isInAdminPage = computed(() => route.path.startsWith('/admin'))
 
 // 检查管理员登录状态
 const checkAdminStatus = async () => {
@@ -62,20 +90,33 @@ const checkAdminStatus = async () => {
   if (token) {
     try {
       await adminAPI.verifyToken()
-      isAdmin.value = true
+      isLoggedIn.value = true
     } catch (error) {
       localStorage.removeItem('admin_token')
-      isAdmin.value = false
+      isLoggedIn.value = false
     }
+  } else {
+    isLoggedIn.value = false
   }
 }
 
+// 监听路由变化
+watch(() => route.path, () => {
+  checkAdminStatus()
+})
+
 // 退出登录
 const logout = () => {
-  localStorage.removeItem('admin_token')
-  isAdmin.value = false
-  ElMessage.success('已退出登录')
-  router.push('/')
+  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    localStorage.removeItem('admin_token')
+    isLoggedIn.value = false
+    ElMessage.success('已退出登录')
+    router.push('/')
+  }).catch(() => {})
 }
 
 onMounted(() => {
@@ -107,21 +148,8 @@ html, body {
   .el-card {
     margin: 0 !important;
   }
-
   .el-card__body {
     padding: 15px !important;
-  }
-
-  .el-card__header {
-    padding: 12px 15px !important;
-  }
-
-  .el-button {
-    padding: 8px 15px !important;
-  }
-
-  .el-radio-button__inner {
-    padding: 8px 12px !important;
   }
 }
 </style>
@@ -160,29 +188,45 @@ html, body {
   text-decoration: none;
   font-size: 20px;
   font-weight: bold;
-  transition: color 0.3s ease;
 }
 
-.nav-left .logo:hover {
-  color: #337ecc;
+/* 💡 自定义导航项样式 - 强制不换行，不显示三个点 */
+.nav-right-custom {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
 }
 
-.nav-right :deep(.el-menu) {
-  background: transparent;
-  border: none;
-}
-
-.nav-right :deep(.el-menu-item) {
+.custom-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #606266;
+  text-decoration: none;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 10px;
+  height: 60px;
   border-bottom: 2px solid transparent;
   transition: all 0.3s ease;
+  white-space: nowrap; /* 💡 强制不换行 */
 }
 
-.nav-right :deep(.el-menu-item:hover),
-.nav-right :deep(.el-menu-item.is-active) {
+.custom-nav-item:hover,
+.custom-nav-item.active {
   color: #409eff;
   background-color: rgba(64, 158, 255, 0.08);
   border-bottom-color: #409eff;
+}
+
+.logout-btn {
+  color: #f56c6c !important;
+}
+
+.logout-btn:hover {
+  background-color: rgba(245, 108, 108, 0.08) !important;
+  border-bottom-color: #f56c6c !important;
 }
 
 .main-content {
@@ -197,38 +241,18 @@ html, body {
     height: 50px !important;
     line-height: 50px;
   }
-
   .nav-container {
     padding: 0 10px;
   }
-
-  .nav-left .logo {
-    font-size: 16px;
-  }
-
-  .nav-left .logo span {
+  .custom-nav-item {
+    height: 50px;
+    padding: 0 8px;
     font-size: 14px;
+    gap: 4px;
   }
-
-  .nav-right :deep(.el-menu) {
-    display: flex;
-  }
-
-  .nav-right :deep(.el-menu-item) {
-    padding: 0 10px;
-    font-size: 14px;
-  }
-
-  .nav-right :deep(.el-menu-item) span {
-    display: none;
-  }
-
-  .nav-right :deep(.el-icon) {
-    margin-right: 0 !important;
-  }
-
-  .main-content {
-    padding: 0;
+  /* 移动端如果太窄，可以隐藏文字只留图标，或者缩小间距 */
+  .nav-right-custom {
+    gap: 10px;
   }
 }
 </style>

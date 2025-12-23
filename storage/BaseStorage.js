@@ -1,10 +1,23 @@
 /**
  * 存储基类
- * 严格执行：全量发送，绝不删减逻辑
+ * 💡 严格执行：全量发送，绝不删减逻辑
+ * 补全了统计接口，确保仪表盘数据链路畅通
  */
 export class BaseStorage {
   constructor(config = {}) {
     this.config = config;
+    this.enabled = config.enabled || false;
+  }
+
+  /**
+   * 💡 核心补全：获取存储统计信息
+   * 子类必须覆盖此方法，否则默认返回 0
+   */
+  getStats() {
+    return {
+      count: 0,
+      size: 0
+    };
   }
 
   /**

@@ -26,7 +26,7 @@ const storageConfig = new StorageConfig()
 
 /**
  * 💡 核心逻辑：JWT 密钥持久化逻辑
- * 确保 Docker 容器重启后，已登录的管理员不会被踢下线
+ * 确保进程重启后，已登录的管理员不会被踢下线
  */
 function getJwtSecret() {
   const config = storageConfig.getConfig(true)
@@ -145,19 +145,25 @@ async function initStorageManager(req = null) {
     const baseUrl = getFinalBaseUrl(req)
     const config = storageConfig.getConfig(true) 
     
-    console.log('📝 开始挂载存储驱动...')
+    console.log('📝 [INIT] 开始挂载存储驱动...')
     
     storageManager = await StorageManager.initialize({
       ...config,
       baseUrl: baseUrl
     })
 
-    // 打印当前加载的图片统计，用于排查数据不显示问题
     const stats = storageManager.getStoragesStats()
-    console.log('📊 驱动加载成功，当前数据索引统计:', JSON.stringify(stats))
+    
+    console.log('📊 [INIT] 后端统计数据已就绪:')
+    console.log('------------------------------------------')
+    console.log(`总图片数: ${stats.totalCount} 张`)
+    console.log(`总占用空间: ${(stats.totalSize / 1024 / 1024).toFixed(2)} MB`)
+    console.log('各存储详情:')
+    console.table(stats.storages)
+    console.log('------------------------------------------')
     
   } catch (err) {
-    console.error('❌ 存储管理器初始化异常:', err.message)
+    console.error('❌ [INIT] 存储管理器初始化异常:', err.message)
   }
 }
 
@@ -230,16 +236,21 @@ app.get('/r2/:shortId', async (req, res) => {
 
 // --- API 业务接口 ---
 
-/**
- * 💡 补全接口：获取后台管理首页统计数据
- */
 app.get('/api/admin/stats', authenticateToken, async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
     const stats = storageManager.getStoragesStats()
+    
+    // 💡 适配前端 Admin.vue
+    const redundantData = {
+      ...stats,
+      totalImages: stats.totalCount,
+      storageStats: stats.storages
+    }
+
     res.json({
       success: true,
-      data: stats
+      data: redundantData
     })
   } catch (e) {
     res.status(500).json({ success: false, message: e.message })
@@ -319,12 +330,12 @@ app.post('/api/admin/sync-r2', authenticateToken, async (req, res) => {
 })
 
 /**
- * 💡 关键修复：统一配置保存处理函数
+ * 💡 关键修复：增强保存逻辑
+ * 保存前静默测试配置可用性
  */
 const handleSaveConfig = async (req, res) => {
   try {
-    let updateType = 'global'
-    let updateData = null
+    let updateType = 'global', updateData = null
 
     if (req.body.defaultStorage) {
       updateData = { defaultStorage: req.body.defaultStorage }
@@ -333,6 +344,19 @@ const handleSaveConfig = async (req, res) => {
     } else if (req.body.storageType && req.body.config) {
       updateType = req.body.storageType
       updateData = req.body.config
+      
+      // 💡 R2 强校验：保存前必须通过测试
+      if (updateType === 'r2' && updateData.enabled) {
+        const { R2Storage } = await import('./storage/R2Storage.js')
+        const testStorage = new R2Storage({ ...updateData, baseUrl: getFinalBaseUrl(req) })
+        const isOk = await testStorage.isAvailable()
+        if (!isOk) {
+          return res.status(400).json({ 
+            success: false, 
+            message: '保存失败：Account ID 或 API Key 校验未通过' 
+          })
+        }
+      }
     }
 
     if (!updateData) return res.status(400).json({ success: false, message: 'Invalid parameters' })
@@ -361,14 +385,16 @@ app.post('/api/admin/storage/test', authenticateToken, async (req, res) => {
       const { TelegraphStorage } = await import('./storage/TelegraphStorage.js')
       const s = new TelegraphStorage({ ...cfg, baseUrl })
       const available = await s.isAvailable()
-      res.json({ success: true, data: { success: available, message: available ? 'OK' : '连接失败' } })
+      res.json({ success: true, data: { success: available, message: available ? '连接成功' : '验证失败' } })
     } else if (storageType === 'r2') {
       const { R2Storage } = await import('./storage/R2Storage.js')
       const s = new R2Storage({ ...cfg, baseUrl })
       const available = await s.isAvailable()
-      res.json({ success: true, data: { success: available, message: available ? 'OK' : '测试失败' } })
+      res.json({ success: true, data: { success: available, message: available ? '连接成功' : 'R2 验证失败' } })
     }
-  } catch (e) { res.json({ success: true, data: { success: false, message: e.message } }) }
+  } catch (e) {
+    res.json({ success: true, data: { success: false, message: e.message } })
+  }
 })
 
 app.post('/api/admin/login', async (req, res) => {
@@ -377,8 +403,8 @@ app.post('/api/admin/login', async (req, res) => {
     if (username !== adminUser.username || !await bcrypt.compare(password, adminUser.password)) {
       return res.status(401).json({ success: false, message: '认证失败' })
     }
-    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '2h' })
-    res.json({ success: true, data: { token, username } })
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '24h' })
+    res.json({ success: true, data: { token, username: adminUser.username } })
   } catch (e) { res.status(500).send('Login Error') }
 })
 
@@ -390,21 +416,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'))
 })
 
-/**
- * 启动服务器
- */
 async function startServer() {
   await initAdmin()
-
   app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 图床服务器已启动`)
-    console.log(`🔗 访问地址: http://localhost:${PORT}`)
-    console.log(`👤 管理员账号已初始化`)
-    console.log(`🔑 JWT密钥已持久化配置`)
-    console.log(`⚙️  存储配置已加载`)
-    console.log(`🌐 服务器监听: 0.0.0.0:${PORT}`)
-    console.log(`📝 支持 Telegraph 和 Cloudflare R2 存储`)
-    
+    console.log(`🚀 图床服务器已启动: http://0.0.0.0:${PORT}`)
     await initStorageManager()
   })
 }
