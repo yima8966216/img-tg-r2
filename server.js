@@ -292,21 +292,69 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }) }
 })
 
+/**
+ * 💡 修复：支持 "all" 模式合并获取图片列表，确保 Cloudflare R2 图片能被加载
+ */
 app.get('/api/images', async (req, res) => {
   try {
     if (!storageManager) await initStorageManager(req)
+    
     const storageType = req.query.storageType || 'telegraph'
-    const s = storageManager.getStorage(storageType)
-    if (!s) return res.json({ success: true, data: [] })
-    const images = await s.list()
     const baseUrl = getFinalBaseUrl(req)
-    const data = images.map(img => ({
-      ...img,
-      url: `${baseUrl}${img.url}`,
-      thumbnailUrl: `${baseUrl}${img.thumbnailUrl || img.url}`
-    }))
+    let combinedImages = []
+
+    if (storageType === 'all') {
+      // 1. 获取所有可用的存储驱动标识
+      const availableStorages = storageManager.getAvailableStorages()
+      
+      // 2. 并发调用所有驱动的 list 方法
+      const listPromises = availableStorages.map(async (type) => {
+        const s = storageManager.getStorage(type)
+        if (s) {
+          try {
+            const list = await s.list()
+            // 为每张图片注入标识，确保前端知道它来自哪个存储
+            return list.map(img => ({
+              ...img,
+              storageType: type 
+            }))
+          } catch (err) {
+            console.error(`[LIST ERROR] 获取 ${type} 列表失败:`, err.message)
+            return []
+          }
+        }
+        return []
+      })
+
+      const results = await Promise.all(listPromises)
+      // 3. 扁平化合并所有图片
+      combinedImages = results.flat()
+    } else {
+      // 原有的单一存储获取逻辑
+      const s = storageManager.getStorage(storageType)
+      if (s) {
+        const list = await s.list()
+        combinedImages = list.map(img => ({
+          ...img,
+          storageType: storageType
+        }))
+      }
+    }
+
+    // 4. 处理 URL 拼接并按时间倒序排列
+    const data = combinedImages
+      .map(img => ({
+        ...img,
+        url: `${baseUrl}${img.url}`,
+        thumbnailUrl: `${baseUrl}${img.thumbnailUrl || img.url}`
+      }))
+      .sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime))
+
     res.json({ success: true, data })
-  } catch (e) { res.status(500).json({ success: false, message: e.message }) }
+  } catch (e) {
+    console.error('获取图片列表异常:', e)
+    res.status(500).json({ success: false, message: e.message })
+  }
 })
 
 app.delete('/api/admin/images/:filename', authenticateToken, async (req, res) => {

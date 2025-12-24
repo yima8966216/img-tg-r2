@@ -11,29 +11,44 @@
               当前: {{ getStorageLabel(selectedStorage) }}
             </el-tag>
           </div>
+          
           <div class="header-right">
-            <el-button 
-              v-if="selectedStorage === 'r2'"
-              type="primary" 
-              size="small"
-              :icon="Refresh"
-              :loading="syncing"
-              @click="handleSyncCloud"
-              style="margin-right: 10px"
-            >
-              同步云端
-            </el-button>
-
-            <el-select v-model="selectedStorage" @change="handleStorageChange" size="small" style="width: 140px; margin-right: 10px" placeholder="选择存储">
-              <el-option label="Telegraph" value="telegraph" />
-              <el-option label="Cloudflare R2" value="r2" />
-            </el-select>
-            <el-button-group>
-              <el-button :icon="Refresh" @click="loadImages" :loading="loading" size="small"> 刷新 </el-button>
-              <el-button :icon="View" @click="toggleViewMode" size="small" :type="viewMode === 'grid' ? 'primary' : 'default'">
-                {{ viewMode === 'grid' ? '网格' : '列表' }}
+            <div class="action-container">
+              <el-button 
+                v-if="selectedStorage === 'r2'"
+                type="primary" 
+                size="small"
+                :icon="Refresh"
+                :loading="syncing"
+                @click="handleSyncCloud"
+                class="sync-btn"
+              >
+                同步云端
               </el-button>
-            </el-button-group>
+
+              <el-radio-group 
+                v-model="selectedStorage" 
+                @change="handleStorageChange" 
+                size="small" 
+                class="storage-radio-group"
+              >
+                <el-radio-button label="all">全部</el-radio-button>
+                <el-radio-button label="telegraph">Telegraph</el-radio-button>
+                <el-radio-button label="r2">Cloudflare R2</el-radio-button>
+              </el-radio-group>
+
+              <el-button-group class="view-btn-group">
+                <el-button :icon="Refresh" @click="loadImages" :loading="loading" size="small"> 刷新 </el-button>
+                <el-button 
+                  :icon="View" 
+                  @click="toggleViewMode" 
+                  size="small" 
+                  :type="viewMode === 'grid' ? 'primary' : 'default'"
+                >
+                  {{ viewMode === 'grid' ? '网格' : '列表' }}
+                </el-button>
+              </el-button-group>
+            </div>
           </div>
         </div>
       </template>
@@ -96,22 +111,15 @@
                       {{ getDisplayName(image) }}
                     </span>
                   </div>
-                  
                   <div v-if="getOriginalCacheName(image) && getOriginalCacheName(image) !== getSquareName(image)" class="original-alias-row">
                     <el-icon size="10" class="alias-prefix-icon"><Paperclip /></el-icon>
                     链接标识: {{ getSquareName(image) }}
                   </div>
                 </div>
-
                 <div class="info-checkbox-area" @click.stop>
-                  <el-checkbox 
-                    :value="image.filename" 
-                    v-model="selectedImages" 
-                    class="circle-tick-checkbox"
-                  ></el-checkbox>
+                  <el-checkbox :value="image.filename" v-model="selectedImages" class="circle-tick-checkbox"></el-checkbox>
                 </div>
               </div>
-
               <div class="image-meta">
                 <span class="file-size">{{ formatFileSize(image.size) }}</span>
                 <span class="upload-time">{{ formatTime(image.uploadTime) }}</span>
@@ -153,7 +161,7 @@
                 <el-button-group size="small">
                   <el-button :icon="View" @click="previewImage(scope.row)"></el-button>
                   <el-button :icon="Download" @click="downloadImage(scope.row)"></el-button>
-                  <el-button type="danger" :icon="Delete" @click="deleteImage(scope.row.filename)"></el-button>
+                  <el-button type="danger" :icon="Delete" @click="deleteImage(scope.row.filename, scope.row.storageType)"></el-button>
                 </el-button-group>
               </template>
             </el-table-column>
@@ -162,27 +170,16 @@
       </div>
     </el-card>
 
-    <el-dialog 
-      v-model="previewVisible" 
-      :width="isMobile ? '95%' : '650px'" 
-      append-to-body
-    >
+    <el-dialog v-model="previewVisible" :width="isMobile ? '95%' : '650px'" append-to-body>
       <template #header>
         <div class="dialog-custom-header">
           <el-icon size="16" class="dialog-title-icon"><PictureFilled /></el-icon>
           <span class="dialog-title-text">{{ getDisplayName(currentImage) }}</span>
         </div>
       </template>
-
       <div v-if="currentImage" class="preview-content">
         <div class="preview-img-box">
-          <el-image 
-            :src="currentImage.url" 
-            fit="contain" 
-            class="preview-img-main" 
-            :preview-src-list="[currentImage.url]" 
-            preview-teleported
-          />
+          <el-image :src="currentImage.url" fit="contain" class="preview-img-main" :preview-src-list="[currentImage.url]" preview-teleported />
         </div>
         <div class="share-links">
           <div class="link-item" v-for="link in linkFormats" :key="link.label">
@@ -205,10 +202,12 @@ import { ElMessage } from 'element-plus'
 import { PictureRounded, PictureFilled, Refresh, View, Search, Delete, Download, Paperclip } from '@element-plus/icons-vue'
 import { imageAPI, adminAPI } from '../utils/api'
 
+// 定义事件
 const emit = defineEmits(['stats-updated'])
 
+// 响应式状态
 const images = ref([])
-const selectedStorage = ref('telegraph')
+const selectedStorage = ref('all') // 💡 初始化为全部
 const loading = ref(false)
 const syncing = ref(false)
 const previewVisible = ref(false)
@@ -219,9 +218,7 @@ const sortBy = ref('time-desc')
 const selectedImages = ref([])
 const isMobile = ref(false)
 
-/**
- * 💡 核心对齐：同步云端逻辑
- */
+// 云端同步逻辑
 const handleSyncCloud = async () => {
   if (selectedStorage.value !== 'r2') return
   syncing.value = true
@@ -236,11 +233,10 @@ const handleSyncCloud = async () => {
     }
   } catch (e) {
     ElMessage.error('同步异常: ' + (e.response?.data?.message || e.message))
-  } finally {
-    syncing.value = false
-  }
+  } finally { syncing.value = false }
 }
 
+// 缓存与名称处理逻辑
 const getOriginalCacheName = (img) => {
   if (!img) return null
   if (img.originalName) return img.originalName
@@ -261,6 +257,7 @@ const getDisplayName = (img) => {
   return getOriginalCacheName(img) || getSquareName(img)
 }
 
+// 分享链接计算属性
 const linkFormats = computed(() => {
   if (!currentImage.value) return []
   const { url } = currentImage.value
@@ -273,6 +270,7 @@ const linkFormats = computed(() => {
   ]
 })
 
+// 搜索和排序逻辑
 const filteredImages = computed(() => {
   let result = [...images.value]
   if (searchText.value) {
@@ -286,6 +284,7 @@ const filteredImages = computed(() => {
   return result
 })
 
+// 加载数据
 const loadImages = async () => {
   loading.value = true
   try {
@@ -298,24 +297,33 @@ const loadImages = async () => {
   finally { loading.value = false }
 }
 
+// 切换存储触发加载
 const handleStorageChange = () => { selectedImages.value = []; loadImages() }
-const getStorageTagType = (s) => s === 'telegraph' ? 'success' : 'warning'
-const getStorageLabel = (s) => s === 'telegraph' ? 'TG' : 'R2'
+
+// 标签样式处理
+const getStorageTagType = (s) => {
+  if (s === 'telegraph') return 'success'
+  if (s === 'r2') return 'warning'
+  return 'info'
+}
+const getStorageLabel = (s) => {
+  if (s === 'telegraph') return 'TG'
+  if (s === 'r2') return 'R2'
+  return '全部'
+}
+
+// 视图切换与选择逻辑
 const toggleViewMode = () => viewMode.value = viewMode.value === 'grid' ? 'list' : 'grid'
 const selectAll = () => selectedImages.value = selectedImages.value.length === filteredImages.length ? [] : filteredImages.value.map(img => img.filename)
 const handleSelectionChange = selection => selectedImages.value = selection.map(item => item.filename)
 const previewImage = image => { currentImage.value = image; previewVisible.value = true }
 
-/**
- * 💡 物理级复制加固方案
- * 针对非 HTTPS 环境的兼容性修复
- */
+// 复制功能适配（兼容 HTTP/HTTPS）
 const copyUrl = async (text, label) => {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text)
     } else {
-      // 传统 Textarea 兜底方案，确保在任何环境下都能完成复制
       const textArea = document.createElement("textarea")
       textArea.value = text
       textArea.style.position = "fixed"
@@ -328,31 +336,38 @@ const copyUrl = async (text, label) => {
       document.body.removeChild(textArea)
     }
     ElMessage.success(`${label || '内容'} 已复制`)
-  } catch (err) {
-    ElMessage.error('复制失败，请手动选取')
-  }
+  } catch (err) { ElMessage.error('复制失败，请手动选取') }
 }
 
+// 下载功能
 const downloadImage = image => {
   const link = document.createElement('a'); link.href = image.url
   link.download = getDisplayName(image); link.target = '_blank'
   document.body.appendChild(link); link.click(); document.body.removeChild(link)
 }
 
-const deleteImage = async filename => {
+// 删除逻辑（支持单一与批量，需识别图片本身的存储类型）
+const deleteImage = async (filename, storageType) => {
   try {
-    const response = await adminAPI.deleteImage(filename, selectedStorage.value)
-    if (response.success) { ElMessage.success('删除成功'); loadImages(); emit('stats-updated'); previewVisible.value = false }
+    const response = await adminAPI.deleteImage(filename, storageType)
+    if (response.success) { 
+      ElMessage.success('删除成功'); loadImages(); emit('stats-updated'); previewVisible.value = false 
+    }
   } catch (e) { ElMessage.error('删除失败') }
 }
 
 const deleteSelectedImages = async () => {
   try {
-    const promises = selectedImages.value.map(f => adminAPI.deleteImage(f, selectedStorage.value))
-    await Promise.all(promises); ElMessage.success('批量删除完成'); loadImages(); emit('stats-updated')
+    // 💡 全部模式下，每张图片归属不同，必须从对象中提取正确的 storageType
+    const promises = filteredImages.value
+      .filter(img => selectedImages.value.includes(img.filename))
+      .map(img => adminAPI.deleteImage(img.filename, img.storageType))
+    await Promise.all(promises); 
+    ElMessage.success('批量删除完成'); loadImages(); emit('stats-updated')
   } catch (e) { ElMessage.error('部分删除失败') }
 }
 
+// 辅助格式化函数
 const formatFileSize = b => {
   if (!b) return '0 B'
   const k = 1024; const i = Math.floor(Math.log(b) / Math.log(k))
@@ -362,15 +377,26 @@ const formatFileSize = b => {
 
 const formatTime = t => t ? t.replace(/\//g, '-') : ''
 
+// 初始化
 onMounted(() => { isMobile.value = window.innerWidth <= 768; loadImages() })
 </script>
 
 <style scoped>
-/* 💡 样式保持 100% 对齐，无需修改 */
 .admin-gallery { margin-top: 10px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .header-left { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #409eff; }
+
+/* 💡 顶部右侧对齐补丁 */
+.header-right { display: flex; align-items: center; }
+.action-container { display: flex; align-items: center; gap: 12px; }
+.sync-btn { margin: 0 !important; }
+.storage-radio-group { display: flex; align-items: center; }
+.view-btn-group { display: flex; align-items: center; }
+
+/* 过滤区域样式 */
 .filter-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
+
+/* 网格样式 */
 .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; padding: 10px 0; }
 .image-card { border: 1px solid #eee; border-radius: 12px; overflow: hidden; background: white; transition: 0.3s; position: relative; }
 .image-card.is-selected { border-color: #409eff; box-shadow: 0 0 0 2px #409eff; }
@@ -378,6 +404,8 @@ onMounted(() => { isMobile.value = window.innerWidth <= 768; loadImages() })
 .image-preview { width: 100%; height: 100%; transition: 0.3s; }
 .image-card:hover .image-preview { transform: scale(1.05); }
 .storage-tag-floating { position: absolute; top: 8px; right: 8px; z-index: 10; }
+
+/* 卡片信息区 */
 .image-info { padding: 12px; background: white; border-top: 1px solid #f0f0f0; }
 .info-content-flex { display: flex; align-items: center; justify-content: space-between; min-height: 48px; }
 .image-filename-box { flex: 1; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
@@ -386,12 +414,17 @@ onMounted(() => { isMobile.value = window.innerWidth <= 768; loadImages() })
 .square-style-title { font-size: 14px; font-weight: 800; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .original-alias-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alias-prefix-icon { flex-shrink: 0; margin-left: 2px; }
+
+/* 自定义圆形 Checkbox 样式 */
 .info-checkbox-area { padding-left: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; height: 32px; width: 32px; }
 .circle-tick-checkbox { height: 32px; width: 32px; display: flex; align-items: center; justify-content: center; }
 :deep(.el-checkbox__inner) { width: 28px !important; height: 28px !important; border-radius: 50% !important; border: 2px solid #dcdfe6 !important; background-color: #fff !important; transition: none !important; position: relative !important; }
 :deep(.el-checkbox.is-checked .el-checkbox__inner) { background-color: #409eff !important; border-color: #409eff !important; }
 :deep(.el-checkbox__inner::after) { box-sizing: content-box !important; content: "" !important; border: 3px solid #fff !important; border-left: 0 !important; border-top: 0 !important; height: 12px !important; width: 6px !important; left: 9px !important; top: 4px !important; transform: rotate(45deg) !important; transition: none !important; position: absolute !important; }
+
 .image-meta { display: flex; justify-content: space-between; font-size: 11px; color: #999; margin-top: 8px; border-top: 1px solid #f5f5f5; padding-top: 8px; }
+
+/* 预览弹窗样式 */
 .dialog-custom-header { display: flex; align-items: center; gap: 8px; }
 .dialog-title-icon { color: #409eff; }
 .dialog-title-text { font-weight: bold; font-size: 16px; color: #303133; }
@@ -401,5 +434,12 @@ onMounted(() => { isMobile.value = window.innerWidth <= 768; loadImages() })
 .share-links { text-align: left; }
 .link-item { margin-bottom: 12px; }
 .link-item label { font-size: 12px; font-weight: bold; color: #666; display: block; margin-bottom: 5px; }
-@media (max-width: 768px) { .image-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } .card-header { flex-direction: column; gap: 12px; align-items: flex-start; } }
+
+/* 响应式适配 */
+@media (max-width: 768px) { 
+  .image-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } 
+  .card-header { flex-direction: column; gap: 12px; align-items: flex-start; } 
+  .header-right { width: 100%; }
+  .action-container { width: 100%; justify-content: space-between; overflow-x: auto; padding-bottom: 5px; }
+}
 </style>
