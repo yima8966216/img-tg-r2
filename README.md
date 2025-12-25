@@ -119,7 +119,8 @@ img-tg-r2/
 │   ├── views/         # 页面组件
 │   │   ├── Home.vue   # 首页
 │   │   ├── Login.vue  # 登录页
-│   │   └── Admin.vue  # 管理页
+│   │   ├── Admin.vue  # 管理页
+│   │   └── Square.vue # 图片广场
 │   ├── components/    # 公共组件
 │   │   ├── UploadArea.vue      # 上传组件
 │   │   ├── ImageGallery.vue    # 图片展示
