@@ -7,7 +7,7 @@ import { StorageConfig } from './StorageConfig.js'
 
 /**
  * Telegraph (Telegram Bot) 存储驱动
- * 💡 100% 完整实现：包含统计、上传、读取、索引持久化和像素级通知对齐
+ * 💡 100% 完整全量加固版：增加空文件写入熔断保护，防止索引被误抹除
  */
 export class TelegraphStorage extends BaseStorage {
   constructor(config = {}) {
@@ -15,18 +15,12 @@ export class TelegraphStorage extends BaseStorage {
     this.botToken = config.botToken
     this.chatId = config.chatId
     this.baseUrl = (config.baseUrl || '').replace(/\/$/, '')
-    // 💡 索引文件存放在挂载的 data 目录下
     this.indexFile = path.join(process.cwd(), 'data', 'tg-index.json')
     
-    // 初始化配置管理器用于实时重载配置
     this.configManager = new StorageConfig()
     this._ensureIndexFile()
   }
 
-  /**
-   * 💡 实时获取最新配置
-   * 确保即使在面板修改了 Token，上传时也能立即生效
-   */
   _getLatestConfig() {
     const fullConfig = this.configManager.loadConfig()
     return {
@@ -36,39 +30,71 @@ export class TelegraphStorage extends BaseStorage {
   }
 
   /**
-   * 💡 确保数据目录和索引文件存在
+   * 💡 确保数据目录存在，但不再盲目创建空文件
    */
   _ensureIndexFile() {
     const dataDir = path.dirname(this.indexFile)
     if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true })
+      try {
+        fs.mkdirSync(dataDir, { recursive: true })
+        console.log('📂 [TG] 创建数据目录:', dataDir)
+      } catch (e) {
+        console.error('❌ [TG] 无法创建数据目录:', e.message)
+      }
     }
-    if (!fs.existsSync(this.indexFile)) {
-      fs.writeFileSync(this.indexFile, JSON.stringify([], null, 2), 'utf8')
-    }
+    // 💡 注意：不再自动生成空索引，交给 _readIndex 逻辑保护
   }
 
   /**
-   * 💡 读取索引
+   * 💡 加固读取：增加异常校验，防止内存变量被初始化为空
    */
   _readIndex() {
     try {
-      if (!fs.existsSync(this.indexFile)) return []
+      if (!fs.existsSync(this.indexFile)) {
+        console.warn('⚠️ [TG] 索引文件缺失，如果是首次启动请忽略');
+        return [];
+      }
       const content = fs.readFileSync(this.indexFile, 'utf8')
-      return JSON.parse(content)
+      
+      // 如果文件存在但没内容，可能是损坏了，抛出异常防止后续 saveIndex 覆盖
+      if (content.trim().length === 0) {
+        throw new Error('索引文件内容为空(可能已损坏)')
+      }
+      
+      const parsed = JSON.parse(content)
+      if (!Array.isArray(parsed)) throw new Error('索引文件格式非数组')
+      
+      return parsed
     } catch (e) {
-      return []
+      console.error('🚨 [TG-READ-FATAL] 读取索引失败:', e.message)
+      // 💡 重点：如果读取失败，返回 null 而不是 []，让调用者区分“没图”和“读取出错”
+      return null 
     }
   }
 
   /**
-   * 💡 写入索引
+   * 💡 加固写入：增加熔断保护，禁止空数组覆盖有内容的文件
    */
   _writeIndex(images) {
+    // 1. 如果传入的是 null (说明读取阶段就挂了)，绝对禁止写入
+    if (images === null) {
+      console.error('🛑 [TG-SAVE-FUSE] 检测到非法数据状态，已拦截空覆盖行为')
+      return
+    }
+
     try {
+      // 2. 二次保护：如果 images 是空的，但磁盘上的文件明明是有内容的，拒绝写入
+      if (images.length === 0 && fs.existsSync(this.indexFile)) {
+        const stats = fs.statSync(this.indexFile)
+        if (stats.size > 10) { // 如果旧文件大于 10 字节（即不是 []）
+          console.error('🛑 [TG-SAVE-FUSE] 内存列表为空，但磁盘文件有内容，拦截覆盖！')
+          return
+        }
+      }
+
       fs.writeFileSync(this.indexFile, JSON.stringify(images, null, 2), 'utf8')
     } catch (e) {
-      console.error('❌ 写入 TG 索引失败:', e.message)
+      console.error('❌ [TG] 写入索引失败:', e.message)
     }
   }
 
@@ -76,7 +102,7 @@ export class TelegraphStorage extends BaseStorage {
    * 💡 补全统计函数
    */
   getStats() {
-    const images = this._readIndex()
+    const images = this._readIndex() || [] // 如果读取失败，返回 0
     const totalSize = images.reduce((sum, item) => sum + (item.size || 0), 0)
     return {
       count: images.length,
@@ -84,9 +110,6 @@ export class TelegraphStorage extends BaseStorage {
     }
   }
 
-  /**
-   * 💡 检查驱动是否可用
-   */
   async isAvailable() {
     const conf = this._getLatestConfig()
     if (!conf.token || !conf.chatId) return false
@@ -100,11 +123,8 @@ export class TelegraphStorage extends BaseStorage {
     }
   }
 
-  /**
-   * 💡 获取图片列表
-   */
   async list() {
-    const images = this._readIndex()
+    const images = this._readIndex() || []
     return images.map(item => ({
       ...item,
       url: `/tg/${item.shortId}${path.extname(item.filename || '.jpg')}`,
@@ -113,10 +133,6 @@ export class TelegraphStorage extends BaseStorage {
     }))
   }
 
-  /**
-   * 💡 执行上传并更新索引
-   * 修复点：对齐参数 originalName，像素级对齐通知样式
-   */
   async upload(fileBuffer, filename, mimetype, originalName) {
     const conf = this._getLatestConfig()
     if (!conf.token || !conf.chatId) throw new Error('Telegram 配置缺失')
@@ -126,11 +142,11 @@ export class TelegraphStorage extends BaseStorage {
     form.append('photo', fileBuffer, { filename: originalName || filename, contentType: mimetype })
     
     const shortId = Math.random().toString(36).substring(2, 10)
+    const baseUrl = this.baseUrl || '' // 确保不为 undefined
     const publicUrl = `/tg/${shortId}${path.extname(filename)}`
-    const fullUrl = `${this.baseUrl}${publicUrl}`
+    const fullUrl = `${baseUrl}${publicUrl}`
     const fileSizeText = (fileBuffer.length / 1024).toFixed(2) + ' KB'
 
-    // 💡 样式对齐：标题、链接代码块、大小加粗、文件名代码块
     const captionText = 
       `🚀 <b>Telegraph 上传成功</b>\n\n` +
       `🔗 <b>图片链接：</b>\n` +
@@ -150,7 +166,11 @@ export class TelegraphStorage extends BaseStorage {
 
     if (response.data.ok) {
       const fileId = response.data.result.photo[response.data.result.photo.length - 1].file_id
-      const images = this._readIndex()
+      
+      // 💡 获取最新索引，如果读取失败直接抛错防止写入
+      let images = this._readIndex()
+      if (images === null) throw new Error('系统无法访问索引文件，请检查磁盘权限')
+
       const newImg = {
         filename,
         originalName: originalName || filename,
@@ -175,17 +195,12 @@ export class TelegraphStorage extends BaseStorage {
     throw new Error('Telegraph 上传失败')
   }
 
-  /**
-   * 💡 根据短 ID 查询真正的 TG fileId
-   */
   getFileIdByShortId(shortId) {
-    const found = this._readIndex().find(img => img.shortId === shortId)
+    const images = this._readIndex() || []
+    const found = images.find(img => img.shortId === shortId)
     return found ? found.fileId : null
   }
 
-  /**
-   * 💡 从 TG 代理下载图片流
-   */
   async getFileByFileId(fileId) {
     const conf = this._getLatestConfig()
     const fileInfo = await axios.get(`https://api.telegram.org/bot${conf.token}/getFile?file_id=${fileId}`)
@@ -200,11 +215,11 @@ export class TelegraphStorage extends BaseStorage {
     }
   }
 
-  /**
-   * 💡 删除逻辑
-   */
   async delete(filename) {
-    const images = this._readIndex().filter(img => img.filename !== filename)
+    let images = this._readIndex()
+    if (images === null) return false
+    
+    images = images.filter(img => img.filename !== filename)
     this._writeIndex(images)
     return true
   }

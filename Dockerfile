@@ -26,7 +26,9 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 # 4. 准备持久化数据目录
-RUN rm -rf data && mkdir -p /app/data
+RUN rm -rf src public node_modules/.cache && \
+    mkdir -p /app/data && \
+    chmod 777 /app/data
 
 # 暴露固定端口
 EXPOSE 33000

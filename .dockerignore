@@ -1,4 +1,4 @@
-# 💡 忽略依赖包（容器内会重新安装）
+# 💡 忽略依赖包（容器内通过 npm ci 重新安装）
 node_modules
 npm-debug.log
 
@@ -11,12 +11,19 @@ npm-debug.log
 .env.*
 !env.example
 
-# ⚠️ 注意：这里绝对不能写 dist ！！！
-# 我们需要把宿主机编译好的静态文件拷进去
+# 💡 忽略前端源码（Dockerfile 已拷贝 dist 静态文件，不需要带入源码）
+src/
+public/
+vite.config.js
+index.html
 
-# 💡 忽略文档（可选，为了精简镜像体积）
+# ⚠️ 注意：这里严禁写 dist ！！！
+# 你的 Dockerfile 依赖 COPY dist/ ./dist/ 将宿主机编译好的静态文件拷入镜像
+
+# 💡 忽略文档（精简镜像体积）
 *.md
 !README.md
+STORAGE_CONFIG.md
 
 # 💡 忽略 IDE 与系统文件
 .vscode
@@ -25,6 +32,6 @@ npm-debug.log
 .DS_Store
 Thumbs.db
 
-# 💡 忽略数据目录（data 目录在容器启动时挂载，构建时不需要带入）
+# 💡 忽略数据目录（关键：构建镜像时不带入本地数据，防止空数据覆盖宿主机挂载点）
 data/*
 !data/.gitkeep
